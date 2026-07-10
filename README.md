@@ -22,7 +22,7 @@ The only Android LLM app that literally cannot phone home. All LLM inference run
 [![Download APK](https://img.shields.io/badge/Download_APK-111111?style=for-the-badge&logo=android&logoColor=white&labelColor=142838&color=8ff586)](https://github.com/jegly/OfflineLLM/releases/latest)
 
 <a href="https://www.buymeacoffee.com/jegly">
-  <img src="https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png"
+  <img src="https://cdn.buymeacoffee.com/buttons/v2/default-green.png"
        alt="Buy Me A Coffee"
        height="41"
        width="174"
