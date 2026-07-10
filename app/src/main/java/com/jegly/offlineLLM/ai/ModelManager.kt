@@ -79,30 +79,68 @@ class ModelManager(
     }
 
     suspend fun importModel(uri: Uri): Result<ModelInfo> = withContext(Dispatchers.IO) {
+        // Copy to a .part temp file and rename only after the copy is verified —
+        // otherwise an interrupted import leaves a truncated .gguf with a valid
+        // header that passes the magic check but fails at load with
+        // "tensor data is not within the file bounds".
+        val fileName = getFileNameFromUri(uri) ?: "imported_${System.currentTimeMillis()}.gguf"
+        val tempFile = File(modelsDir, "$fileName.part")
         try {
-            val fileName = getFileNameFromUri(uri) ?: "imported_${System.currentTimeMillis()}.gguf"
-
             if (!fileName.endsWith(".gguf")) {
                 return@withContext Result.failure(Exception("Only GGUF format models are supported"))
             }
 
-            val destFile = File(modelsDir, fileName)
+            val expectedSize = getSizeFromUri(uri)
 
-            context.contentResolver.openInputStream(uri)?.use { input ->
-                destFile.outputStream().use { output ->
+            val copiedBytes = context.contentResolver.openInputStream(uri)?.use { input ->
+                tempFile.outputStream().use { output ->
                     input.copyTo(output, bufferSize = 8192)
                 }
             } ?: return@withContext Result.failure(Exception("Could not read selected file"))
 
-            if (!validateGGUF(destFile)) {
-                destFile.delete()
+            if (expectedSize != null && copiedBytes != expectedSize) {
+                tempFile.delete()
+                return@withContext Result.failure(
+                    Exception(
+                        "Import incomplete: copied $copiedBytes of $expectedSize bytes. " +
+                        "Check free storage and try again."
+                    )
+                )
+            }
+
+            if (!validateGGUF(tempFile)) {
+                tempFile.delete()
                 return@withContext Result.failure(Exception("Invalid GGUF file format"))
+            }
+
+            val destFile = File(modelsDir, fileName)
+            if (destFile.exists()) {
+                destFile.delete()
+            }
+            if (!tempFile.renameTo(destFile)) {
+                tempFile.delete()
+                return@withContext Result.failure(Exception("Could not finalise imported file"))
             }
 
             val modelInfo = registerModelIfNeeded(destFile, isBundled = false)
             Result.success(modelInfo)
         } catch (e: Exception) {
+            tempFile.delete()
             Result.failure(e)
+        }
+    }
+
+    /** Size in bytes the source content provider declares for [uri], or null if unknown. */
+    private fun getSizeFromUri(uri: Uri): Long? {
+        return try {
+            context.contentResolver.query(uri, null, null, null, null)?.use { cursor ->
+                val sizeIndex = cursor.getColumnIndex(android.provider.OpenableColumns.SIZE)
+                if (sizeIndex >= 0 && cursor.moveToFirst() && !cursor.isNull(sizeIndex)) {
+                    cursor.getLong(sizeIndex).takeIf { it > 0 }
+                } else null
+            }
+        } catch (_: Exception) {
+            null
         }
     }
 
@@ -129,6 +167,7 @@ class ModelManager(
         }
 
         inferenceEngine.unloadModel()
+        ensureBackendsLoaded()
 
         val params = SmolLM.InferenceParams(
             temperature = settingsRepository.temperature,
@@ -138,7 +177,11 @@ class ModelManager(
             repeatPenalty = settingsRepository.repeatPenalty,
             contextSize = settingsRepository.contextSize.toLong(),
             numThreads = settingsRepository.numThreads,
-            nGpuLayers = settingsRepository.gpuLayers,
+            numThreadsBatch = Runtime.getRuntime().availableProcessors(),
+            nGpuLayers = if (settingsRepository.useGpu) settingsRepository.gpuLayers else 0,
+            useMmap = settingsRepository.useMmap,
+            useMlock = settingsRepository.useMlock,
+            kvCacheQ8 = settingsRepository.kvCacheQ8,
         )
 
         inferenceEngine.loadModel(
@@ -156,6 +199,16 @@ class ModelManager(
                 onError(e)
             }
         )
+    }
+
+    private fun ensureBackendsLoaded() {
+        inferenceEngine.initBackends(context.applicationInfo.nativeLibraryDir ?: "")
+    }
+
+    /** GPU device description (e.g. "Adreno (TM) 640"), or "" if no usable GPU backend. */
+    fun getGpuDeviceInfo(): String {
+        ensureBackendsLoaded()
+        return inferenceEngine.getGpuDeviceInfo()
     }
 
     suspend fun unloadModel() {

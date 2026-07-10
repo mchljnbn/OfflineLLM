@@ -38,6 +38,12 @@ class InferenceEngine {
         val contextLengthUsed: Int,
     )
 
+    /** Loads ggml backend plugins (best CPU variant + Vulkan) from the app's lib dir. */
+    fun initBackends(nativeLibDir: String) = instance.loadBackends(nativeLibDir)
+
+    /** GPU device description from the ggml backend registry, or "" if none. */
+    fun getGpuDeviceInfo(): String = instance.getGpuDeviceInfo()
+
     fun loadModel(
         modelPath: String,
         params: SmolLM.InferenceParams = SmolLM.InferenceParams(),
@@ -51,7 +57,24 @@ class InferenceEngine {
 
             loadJob = CoroutineScope(Dispatchers.Default).launch {
                 try {
-                    instance.load(modelPath, params)
+                    try {
+                        instance.load(modelPath, params)
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (e: Exception) {
+                        // GPU offload can fail on flaky Vulkan drivers or when VRAM
+                        // allocation is refused — retry once fully on CPU before
+                        // giving up, so the app stays usable with GPU toggled on.
+                        if (params.nGpuLayers > 0) {
+                            android.util.Log.w(
+                                "InferenceEngine",
+                                "GPU-accelerated load failed (${e.message}); retrying on CPU"
+                            )
+                            instance.load(modelPath, params.copy(nGpuLayers = 0))
+                        } else {
+                            throw e
+                        }
+                    }
 
                     if (systemPrompt.isNotBlank()) {
                         instance.addSystemPrompt(systemPrompt)

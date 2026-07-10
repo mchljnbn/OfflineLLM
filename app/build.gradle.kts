@@ -12,10 +12,10 @@ android {
 
     defaultConfig {
         applicationId = "com.jegly.offlineLLM"
-        minSdk = 30
+        minSdk = 34
         targetSdk = 37
-        versionCode = 7
-        versionName = "5.0.2"
+        versionCode = 8
+        versionName = "5.1.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         ndk {
             abiFilters += "arm64-v8a"
@@ -44,6 +44,13 @@ android {
     packaging {
         resources {
             excludes += "/META-INF/{AL2.0,LGPL2.1}"
+        }
+        jniLibs {
+            // ggml discovers its backend plugins (libggml-cpu-android_*.so,
+            // libggml-vulkan.so) by scanning nativeLibraryDir at runtime. With the
+            // modern default (libs left compressed inside the APK) that directory
+            // is empty and no backend can load — so extract them to disk.
+            useLegacyPackaging = true
         }
     }
 }

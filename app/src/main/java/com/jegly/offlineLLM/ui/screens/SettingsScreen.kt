@@ -70,10 +70,16 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.jegly.offlineLLM.ai.SystemPrompts
-import com.jegly.offlineLLM.ui.theme.CatppuccinMocha
-import com.jegly.offlineLLM.ui.theme.DraculaColors
+import com.jegly.offlineLLM.ui.theme.AppFont
+import com.jegly.offlineLLM.ui.theme.CatppuccinAccent
+import com.jegly.offlineLLM.ui.theme.CatppuccinFlavor
+import com.jegly.offlineLLM.ui.theme.DraculaAccent
+import com.jegly.offlineLLM.ui.theme.PtyxisPalette
 import com.jegly.offlineLLM.ui.theme.ThemeMode
 import com.jegly.offlineLLM.ui.theme.accentColors
+import com.jegly.offlineLLM.ui.theme.catppuccinAccentColor
+import com.jegly.offlineLLM.ui.theme.catppuccinFlavorFromKey
+import com.jegly.offlineLLM.ui.theme.draculaAccentColor
 import com.jegly.offlineLLM.utils.FileUtils
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -153,6 +159,16 @@ fun SettingsScreen(
             SectionHeader("Accent Colour")
             when (uiState.themeMode) {
                 ThemeMode.CATPPUCCIN.name -> {
+                    val selectedFlavor = catppuccinFlavorFromKey(uiState.catppuccinFlavor)
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        CatppuccinFlavor.entries.forEach { flavor ->
+                            Button(
+                                onClick = { viewModel.setCatppuccinFlavor(flavor.key) },
+                                colors = if (selectedFlavor == flavor) ButtonDefaults.buttonColors() else ButtonDefaults.outlinedButtonColors(),
+                                modifier = Modifier.weight(1f),
+                            ) { Text(flavor.displayName) }
+                        }
+                    }
                     val catScrollState = rememberScrollState()
                     Row(
                         modifier = Modifier
@@ -161,15 +177,15 @@ fun SettingsScreen(
                             .padding(vertical = 4.dp),
                         horizontalArrangement = Arrangement.spacedBy(10.dp),
                     ) {
-                        CatppuccinMocha.accents.forEach { (key, pair) ->
-                            val isSelected = uiState.catppuccinAccent == key
+                        CatppuccinAccent.entries.forEach { accent ->
+                            val isSelected = uiState.catppuccinAccent == accent.key
                             Box(
                                 modifier = Modifier
                                     .size(44.dp)
                                     .clip(CircleShape)
-                                    .background(pair.second)
+                                    .background(catppuccinAccentColor(selectedFlavor, accent))
                                     .then(if (isSelected) Modifier.border(3.dp, MaterialTheme.colorScheme.onSurface, CircleShape) else Modifier)
-                                    .clickable { viewModel.setCatppuccinAccent(key) },
+                                    .clickable { viewModel.setCatppuccinAccent(accent.key) },
                                 contentAlignment = Alignment.Center,
                             ) {
                                 if (isSelected) {
@@ -178,21 +194,22 @@ fun SettingsScreen(
                             }
                         }
                     }
+                    MonochromeAccentsToggle(uiState.monochromeAccents) { viewModel.setMonochromeAccents(it) }
                 }
                 ThemeMode.DRACULA.name -> {
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceEvenly,
                     ) {
-                        DraculaColors.accents.forEach { (key, pair) ->
-                            val isSelected = uiState.draculaAccent == key
+                        DraculaAccent.entries.forEach { accent ->
+                            val isSelected = uiState.draculaAccent == accent.key
                             Box(
                                 modifier = Modifier
                                     .size(44.dp)
                                     .clip(CircleShape)
-                                    .background(pair.second)
+                                    .background(draculaAccentColor(dark = true, accent = accent))
                                     .then(if (isSelected) Modifier.border(3.dp, MaterialTheme.colorScheme.onSurface, CircleShape) else Modifier)
-                                    .clickable { viewModel.setDraculaAccent(key) },
+                                    .clickable { viewModel.setDraculaAccent(accent.key) },
                                 contentAlignment = Alignment.Center,
                             ) {
                                 if (isSelected) {
@@ -201,6 +218,39 @@ fun SettingsScreen(
                             }
                         }
                     }
+                    MonochromeAccentsToggle(uiState.monochromeAccents) { viewModel.setMonochromeAccents(it) }
+                }
+                ThemeMode.PTYXIS.name -> {
+                    val ptyxisScrollState = rememberScrollState()
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .horizontalScroll(ptyxisScrollState)
+                            .padding(vertical = 4.dp),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    ) {
+                        PtyxisPalette.entries.forEach { palette ->
+                            val isSelected = uiState.ptyxisPalette == palette.key
+                            Box(
+                                modifier = Modifier
+                                    .size(44.dp)
+                                    .clip(CircleShape)
+                                    .background(Color(palette.primaryC))
+                                    .then(if (isSelected) Modifier.border(3.dp, MaterialTheme.colorScheme.onSurface, CircleShape) else Modifier)
+                                    .clickable { viewModel.setPtyxisPalette(palette.key) },
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                if (isSelected) {
+                                    Icon(Icons.Filled.Check, contentDescription = "Selected", tint = Color.Black.copy(alpha = 0.6f), modifier = Modifier.size(20.dp))
+                                }
+                            }
+                        }
+                    }
+                    Text(
+                        PtyxisPalette.entries.find { it.key == uiState.ptyxisPalette }?.displayName ?: "",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
                 }
                 else -> {
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
@@ -222,6 +272,35 @@ fun SettingsScreen(
                     }
                 }
             }
+
+            HorizontalDivider()
+
+            // === FONT ===
+            SectionHeader("Font")
+            val fontScrollState = rememberScrollState()
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .horizontalScroll(fontScrollState),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                AppFont.entries.forEach { font ->
+                    Button(
+                        onClick = { viewModel.setAppFont(font.key) },
+                        colors = if (uiState.appFont == font.key) ButtonDefaults.buttonColors() else ButtonDefaults.outlinedButtonColors(),
+                    ) { Text(font.displayName) }
+                }
+            }
+            var fontScaleValue by remember { mutableFloatStateOf(uiState.fontScale) }
+            ParamSlider(
+                label = "Text Size: ${(fontScaleValue * 100).toInt()}%",
+                description = "Scales all app text. 100% = default.",
+                value = fontScaleValue,
+                onValueChange = { fontScaleValue = it },
+                onValueChangeFinished = { viewModel.setFontScale(fontScaleValue) },
+                valueRange = 0.85f..1.3f,
+                steps = 8,
+            )
 
             HorizontalDivider()
 
@@ -269,6 +348,88 @@ fun SettingsScreen(
                 Icon(Icons.Filled.FileOpen, contentDescription = null, modifier = Modifier.padding(end = 8.dp))
                 Text("Import GGUF Model")
             }
+
+            HorizontalDivider()
+
+            // === PERFORMANCE ===
+            SectionHeader("Performance")
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text("GPU Acceleration (Vulkan)")
+                    Text(
+                        if (uiState.gpuDeviceName.isNotEmpty()) "GPU: ${uiState.gpuDeviceName}"
+                        else "No compatible GPU detected",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                Switch(checked = uiState.useGpu, onCheckedChange = { viewModel.setUseGpu(it) })
+            }
+            if (uiState.useGpu) {
+                var gpuLayersValue by remember { mutableFloatStateOf(uiState.gpuLayers.toFloat()) }
+                ParamSlider(
+                    label = "GPU Layers: ${gpuLayersValue.toInt()}" + if (gpuLayersValue.toInt() >= 99) " (all)" else "",
+                    description = "How many model layers to offload to the GPU. 99 = everything. Lower this if GPU loading fails or the device runs out of memory.",
+                    value = gpuLayersValue,
+                    onValueChange = { gpuLayersValue = it },
+                    onValueChangeFinished = { viewModel.setGpuLayers(gpuLayersValue.toInt()) },
+                    valueRange = 1f..99f,
+                    steps = 97,
+                )
+            }
+            val maxThreads = remember { Runtime.getRuntime().availableProcessors() }
+            var threadsValue by remember { mutableFloatStateOf(uiState.numThreads.toFloat()) }
+            ParamSlider(
+                label = "CPU Threads: ${threadsValue.toInt()}",
+                description = "Threads used for inference. More is faster up to a point; too many causes throttling on phones.",
+                value = threadsValue,
+                onValueChange = { threadsValue = it },
+                onValueChangeFinished = { viewModel.setNumThreads(threadsValue.toInt()) },
+                valueRange = 1f..maxThreads.toFloat(),
+                steps = (maxThreads - 2).coerceAtLeast(0),
+            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text("Memory-Map Model")
+                    Text("Load model pages on demand — lower RAM use, recommended", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                Switch(checked = uiState.useMmap, onCheckedChange = { viewModel.setUseMmap(it) })
+            }
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text("Lock Model in RAM")
+                    Text("Prevents the model being swapped out; may fail silently on some devices", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                Switch(checked = uiState.useMlock, onCheckedChange = { viewModel.setUseMlock(it) })
+            }
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text("Quantized KV Cache (experimental)")
+                    Text("Halves memory used by long conversations. Turn off if a model fails to load.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                Switch(checked = uiState.kvCacheQ8, onCheckedChange = { viewModel.setKvCacheQ8(it) })
+            }
+            Text(
+                "Changes apply the next time a model is loaded.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
 
             HorizontalDivider()
 
@@ -634,6 +795,21 @@ fun SettingsScreen(
 @Composable
 private fun SectionHeader(title: String) {
     Text(text = title, style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary)
+}
+
+@Composable
+private fun MonochromeAccentsToggle(checked: Boolean, onCheckedChange: (Boolean) -> Unit) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(modifier = Modifier.weight(1f)) {
+            Text("Monochrome Accents")
+            Text("Use a single accent colour for primary, secondary, and tertiary", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        Switch(checked = checked, onCheckedChange = onCheckedChange)
+    }
 }
 
 @Composable

@@ -5,7 +5,6 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.jegly.offlineLLM.ai.InferenceEngine
 import com.jegly.offlineLLM.ai.ModelManager
-import com.jegly.offlineLLM.ai.PromptFormatter
 import com.jegly.offlineLLM.ai.SystemPrompts
 import com.jegly.offlineLLM.data.local.entities.Conversation
 import com.jegly.offlineLLM.data.local.entities.Message
@@ -209,25 +208,11 @@ class ChatViewModel @Inject constructor(
                 )
             }
 
-            val activeModelId = settingsRepository.activeModelId
-            val model = chatRepository.getModel(activeModelId)
-            
-            val query = if (model != null && PromptFormatter.isGemma4(model.name, model.chatTemplate)) {
-                // Manually format for Gemma 4 if detected
-                val systemPrompt = SystemPrompts.getPrompt(settingsRepository.systemPromptKey, settingsRepository.customSystemPrompt, settingsRepository.translatorFrom, settingsRepository.translatorTo).let {
-                    if (settingsRepository.mathLatexHints)
-                        "$it\nFor mathematical expressions, always use \$...\$ for inline math and \$\$...\$\$ for block math."
-                    else it
-                }
-                val historyMessages = chatRepository.getMessagesSync(conversation.id).dropLast(1)
-                val history = historyMessages.map { it.role to it.content }
-                PromptFormatter.formatGemma4Prompt(systemPrompt, history, sanitized)
-            } else {
-                sanitized
-            }
-
+            // Gemma 4 (like every other arch) is templated natively by
+            // llama_chat_apply_template — no manual pre-formatting. The native
+            // layer feeds only the new turn incrementally into the KV cache.
             inferenceEngine.generateResponse(
-                query = query,
+                query = sanitized,
                 onToken = { partial ->
                     _uiState.update { it.copy(partialResponse = partial) }
                 },

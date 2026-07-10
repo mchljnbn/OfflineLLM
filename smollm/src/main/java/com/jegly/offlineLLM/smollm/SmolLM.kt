@@ -1,68 +1,20 @@
 package com.jegly.offlineLLM.smollm
 
-import android.os.Build
-import android.util.Log
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.withContext
-import java.io.File
-import java.io.FileNotFoundException
 
 class SmolLM {
     companion object {
         private const val TAG = "SmolLM"
 
         init {
-            val cpuFeatures = getCPUFeatures()
-            val hasFp16 = cpuFeatures.contains("fp16") || cpuFeatures.contains("fphp")
-            val hasDotProd = cpuFeatures.contains("dotprod") || cpuFeatures.contains("asimddp")
-            val hasSve = cpuFeatures.contains("sve")
-            val hasI8mm = cpuFeatures.contains("i8mm")
-            val isAtLeastArmV82 =
-                cpuFeatures.contains("asimd") &&
-                    cpuFeatures.contains("crc32") &&
-                    cpuFeatures.contains("aes")
-            val isAtLeastArmV84 = cpuFeatures.contains("dcpop") && cpuFeatures.contains("uscat")
-
-            val isEmulated =
-                (Build.HARDWARE.contains("goldfish") || Build.HARDWARE.contains("ranchu"))
-
-            if (!isEmulated) {
-                if (supportsArm64V8a()) {
-                    if (isAtLeastArmV84 && hasSve && hasI8mm && hasFp16 && hasDotProd) {
-                        System.loadLibrary("smollm_v8_4_fp16_dotprod_i8mm_sve")
-                    } else if (isAtLeastArmV84 && hasSve && hasFp16 && hasDotProd) {
-                        System.loadLibrary("smollm_v8_4_fp16_dotprod_sve")
-                    } else if (isAtLeastArmV84 && hasI8mm && hasFp16 && hasDotProd) {
-                        System.loadLibrary("smollm_v8_4_fp16_dotprod_i8mm")
-                    } else if (isAtLeastArmV84 && hasFp16 && hasDotProd) {
-                        System.loadLibrary("smollm_v8_4_fp16_dotprod")
-                    } else if (isAtLeastArmV82 && hasFp16 && hasDotProd) {
-                        System.loadLibrary("smollm_v8_2_fp16_dotprod")
-                    } else if (isAtLeastArmV82 && hasFp16) {
-                        System.loadLibrary("smollm_v8_2_fp16")
-                    } else {
-                        System.loadLibrary("smollm_v8")
-                    }
-                } else {
-                    System.loadLibrary("smollm")
-                }
-            } else {
-                System.loadLibrary("smollm")
-            }
+            // CPU-specific optimisation now lives in the ggml-cpu plugin variants
+            // (libggml-cpu-android_*.so) selected at runtime by initBackends();
+            // the JNI wrapper itself has a single build.
+            System.loadLibrary("smollm")
         }
-
-        private fun getCPUFeatures(): String {
-            return try {
-                File("/proc/cpuinfo").readText()
-                    .substringAfter("Features").substringAfter(":").substringBefore("\n").trim()
-            } catch (e: FileNotFoundException) {
-                ""
-            }
-        }
-
-        private fun supportsArm64V8a(): Boolean = Build.SUPPORTED_ABIS[0] == "arm64-v8a"
     }
 
     @Volatile private var nativePtr = 0L
@@ -80,6 +32,11 @@ class SmolLM {
         val useMmap: Boolean = true,
         val useMlock: Boolean = false,
         val nGpuLayers: Int = 0,
+        // Threads for the compute-bound prompt-processing phase; <= 0 means
+        // "same as numThreads". Typically set to all cores incl. efficiency ones.
+        val numThreadsBatch: Int = -1,
+        // Q8_0-quantized KV cache — halves KV memory at long contexts.
+        val kvCacheQ8: Boolean = false,
     )
 
     object DefaultParams {
@@ -108,8 +65,28 @@ class SmolLM {
                 params.useMmap,
                 params.useMlock,
                 params.nGpuLayers,
+                params.numThreadsBatch,
+                params.kvCacheQ8,
             )
         }
+
+    /**
+     * Loads the ggml backend plugins from the app's nativeLibraryDir, picking the
+     * best CPU-variant kernels for this device. Must run once before the first
+     * [load] or [getGpuDeviceInfo]; subsequent calls are no-ops.
+     */
+    fun loadBackends(nativeLibDir: String) = initBackends(nativeLibDir)
+
+    /**
+     * Description of the first GPU-type ggml backend device (e.g. "Adreno (TM) 640"),
+     * or "" when no usable GPU backend registered on this device. Does not require
+     * a loaded model.
+     */
+    fun getGpuDeviceInfo(): String = try {
+        getGpuDeviceName()
+    } catch (_: Throwable) {
+        ""
+    }
 
     /**
      * Generic method to add a message with a specific role.
@@ -197,9 +174,12 @@ class SmolLM {
     private external fun loadModel(
         modelPath: String, minP: Float, temperature: Float, topP: Float, topK: Int,
         repeatPenalty: Float, storeChats: Boolean, contextSize: Long, chatTemplate: String,
-        nThreads: Int, useMmap: Boolean, useMlock: Boolean, nGpuLayers: Int
+        nThreads: Int, useMmap: Boolean, useMlock: Boolean, nGpuLayers: Int,
+        nThreadsBatch: Int, kvCacheQ8: Boolean
     ): Long
+    private external fun initBackends(nativeLibDir: String)
 
+    private external fun getGpuDeviceName(): String
     private external fun addChatMessage(modelPtr: Long, message: String, role: String)
     private external fun getResponseGenerationSpeed(modelPtr: Long): Float
     private external fun getContextSizeUsed(modelPtr: Long): Int

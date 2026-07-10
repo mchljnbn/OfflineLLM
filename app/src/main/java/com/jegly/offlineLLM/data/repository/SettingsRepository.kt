@@ -56,7 +56,16 @@ class SettingsRepository @Inject constructor(
         const val KEY_TRANSLATOR_TO = "translator_to"
         const val KEY_CATPPUCCIN_ACCENT = "catppuccin_accent"
         const val KEY_DRACULA_ACCENT = "dracula_accent"
+        const val KEY_CATPPUCCIN_FLAVOR = "catppuccin_flavor"
+        const val KEY_PTYXIS_PALETTE = "ptyxis_palette"
+        const val KEY_MONOCHROME_ACCENTS = "monochrome_accents"
+        const val KEY_APP_FONT = "app_font"
+        const val KEY_FONT_SCALE = "font_scale"
         const val KEY_GPU_LAYERS = "gpu_layers"
+        const val KEY_USE_GPU = "use_gpu"
+        const val KEY_USE_MMAP = "use_mmap"
+        const val KEY_USE_MLOCK = "use_mlock"
+        const val KEY_KV_CACHE_Q8 = "kv_cache_q8"
         const val DEFAULT_TEMPERATURE = 0.7f
         const val DEFAULT_MAX_TOKENS = 2048
         const val DEFAULT_CONTEXT_SIZE = 4096
@@ -175,7 +184,7 @@ class SettingsRepository @Inject constructor(
         set(value) = prefs.edit().putInt(KEY_NUM_THREADS, value).apply()
 
     var themeMode: String
-        get() = prefs.getString(KEY_THEME_MODE, "SYSTEM") ?: "SYSTEM"
+        get() = prefs.getString(KEY_THEME_MODE, "PTYXIS") ?: "PTYXIS"
         set(value) = prefs.edit().putString(KEY_THEME_MODE, value).apply()
 
     var accentColor: String
@@ -206,7 +215,44 @@ class SettingsRepository @Inject constructor(
         get() = prefs.getString(KEY_DRACULA_ACCENT, "purple") ?: "purple"
         set(value) = prefs.edit().putString(KEY_DRACULA_ACCENT, value).apply()
 
+    var catppuccinFlavor: String
+        get() = prefs.getString(KEY_CATPPUCCIN_FLAVOR, "mocha") ?: "mocha"
+        set(value) = prefs.edit().putString(KEY_CATPPUCCIN_FLAVOR, value).apply()
+
+    var ptyxisPalette: String
+        get() = prefs.getString(KEY_PTYXIS_PALETTE, "cobalt_neon") ?: "cobalt_neon"
+        set(value) = prefs.edit().putString(KEY_PTYXIS_PALETTE, value).apply()
+
+    var monochromeAccents: Boolean
+        get() = prefs.getBoolean(KEY_MONOCHROME_ACCENTS, false)
+        set(value) = prefs.edit().putBoolean(KEY_MONOCHROME_ACCENTS, value).apply()
+
+    var appFont: String
+        get() = prefs.getString(KEY_APP_FONT, "turret_road") ?: "turret_road"
+        set(value) = prefs.edit().putString(KEY_APP_FONT, value).apply()
+
+    var fontScale: Float
+        get() = prefs.getFloat(KEY_FONT_SCALE, 1.0f)
+        set(value) = prefs.edit().putFloat(KEY_FONT_SCALE, value).apply()
+
+    // 99 = "offload all layers"; only takes effect when useGpu is on.
     var gpuLayers: Int
-        get() = prefs.getInt(KEY_GPU_LAYERS, 0)
+        get() = prefs.getInt(KEY_GPU_LAYERS, 99)
         set(value) = prefs.edit().putInt(KEY_GPU_LAYERS, value).apply()
+
+    var useGpu: Boolean
+        get() = prefs.getBoolean(KEY_USE_GPU, false)
+        set(value) = prefs.edit().putBoolean(KEY_USE_GPU, value).apply()
+
+    var useMmap: Boolean
+        get() = prefs.getBoolean(KEY_USE_MMAP, true)
+        set(value) = prefs.edit().putBoolean(KEY_USE_MMAP, value).apply()
+
+    var useMlock: Boolean
+        get() = prefs.getBoolean(KEY_USE_MLOCK, false)
+        set(value) = prefs.edit().putBoolean(KEY_USE_MLOCK, value).apply()
+
+    var kvCacheQ8: Boolean
+        get() = prefs.getBoolean(KEY_KV_CACHE_Q8, false)
+        set(value) = prefs.edit().putBoolean(KEY_KV_CACHE_Q8, value).apply()
 }

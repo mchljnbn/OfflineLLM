@@ -3,7 +3,9 @@ package com.jegly.offlineLLM.ui.theme
 import android.os.Build
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.ColorScheme
+import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ProvideTextStyle
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.dynamicDarkColorScheme
 import androidx.compose.material3.dynamicLightColorScheme
@@ -17,8 +19,9 @@ enum class ThemeMode(val label: String) {
     LIGHT("Light"),
     DARK("Dark"),
     AMOLED("AMOLED Black"),
-    CATPPUCCIN("Catppuccin Mocha"),
+    CATPPUCCIN("Catppuccin"),
     DRACULA("Dracula"),
+    PTYXIS("Ptyxis Terminal"),
 }
 
 data class AccentColor(
@@ -64,23 +67,37 @@ private fun buildColorScheme(seed: Color, isDark: Boolean): ColorScheme {
 
 @Composable
 fun OfflineLLMTheme(
-    themeMode: ThemeMode = ThemeMode.SYSTEM,
+    themeMode: ThemeMode = ThemeMode.PTYXIS,
     accentColorKey: String = "dynamic",
+    catppuccinFlavorKey: String = "mocha",
     catppuccinAccentKey: String = "mauve",
     draculaAccentKey: String = "purple",
+    ptyxisPaletteKey: String = "cobalt_neon",
+    monochromeAccents: Boolean = false,
+    appFontKey: String = "turret_road",
+    fontScale: Float = 1.0f,
     content: @Composable () -> Unit
 ) {
     val isDark = when (themeMode) {
         ThemeMode.SYSTEM -> isSystemInDarkTheme()
         ThemeMode.LIGHT -> false
-        ThemeMode.DARK, ThemeMode.AMOLED, ThemeMode.CATPPUCCIN, ThemeMode.DRACULA -> true
+        ThemeMode.DARK, ThemeMode.AMOLED, ThemeMode.CATPPUCCIN, ThemeMode.DRACULA, ThemeMode.PTYXIS -> true
     }
 
     val accent = accentColors.find { it.key == accentColorKey }
 
     val colorScheme = when {
-        themeMode == ThemeMode.CATPPUCCIN -> catppuccinColorScheme(catppuccinAccentKey)
-        themeMode == ThemeMode.DRACULA -> draculaColorScheme(draculaAccentKey)
+        themeMode == ThemeMode.CATPPUCCIN -> buildCatppuccinColorScheme(
+            flavor = catppuccinFlavorFromKey(catppuccinFlavorKey),
+            accent = catppuccinAccentFromKey(catppuccinAccentKey),
+            monochrome = monochromeAccents,
+        )
+        themeMode == ThemeMode.DRACULA -> buildDraculaColorScheme(
+            accent = draculaAccentFromKey(draculaAccentKey),
+            dark = true,
+            monochrome = monochromeAccents,
+        )
+        themeMode == ThemeMode.PTYXIS -> buildPtyxisColorScheme(ptyxisPaletteFromKey(ptyxisPaletteKey))
         // AMOLED with custom accent
         themeMode == ThemeMode.AMOLED && accent != null && accent.key != "dynamic" -> {
             buildColorScheme(accent.seed, true).copy(
@@ -122,8 +139,17 @@ fun OfflineLLMTheme(
         else -> lightColorScheme()
     }
 
+    // Apply the user-selected font everywhere: the Typography roles cover Texts that pass an
+    // explicit typography style; the root ProvideTextStyle covers Texts without one.
+    val selectedFontFamily = appFontFromKey(appFontKey).family
+    val typography = buildAppTypography(selectedFontFamily, fontScale)
+
     MaterialTheme(
         colorScheme = colorScheme,
-        content = content
-    )
+        typography = typography,
+    ) {
+        ProvideTextStyle(LocalTextStyle.current.copy(fontFamily = selectedFontFamily)) {
+            content()
+        }
+    }
 }

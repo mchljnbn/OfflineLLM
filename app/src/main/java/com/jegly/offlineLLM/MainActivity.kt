@@ -62,11 +62,16 @@ class MainActivity : FragmentActivity() {
 
         val themeModeState = mutableStateOf(
             try { ThemeMode.valueOf(settingsRepository.themeMode) }
-            catch (_: Exception) { ThemeMode.SYSTEM }
+            catch (_: Exception) { ThemeMode.PTYXIS }
         )
         val accentColorState = mutableStateOf(settingsRepository.accentColor)
         val catppuccinAccentState = mutableStateOf(settingsRepository.catppuccinAccent)
         val draculaAccentState = mutableStateOf(settingsRepository.draculaAccent)
+        val catppuccinFlavorState = mutableStateOf(settingsRepository.catppuccinFlavor)
+        val ptyxisPaletteState = mutableStateOf(settingsRepository.ptyxisPalette)
+        val monochromeAccentsState = mutableStateOf(settingsRepository.monochromeAccents)
+        val appFontState = mutableStateOf(settingsRepository.appFont)
+        val fontScaleState = mutableStateOf(settingsRepository.fontScale)
 
         setContent {
             val themeMode by themeModeState
@@ -96,6 +101,26 @@ class MainActivity : FragmentActivity() {
                         if (newDracula != draculaAccentState.value) {
                             draculaAccentState.value = newDracula
                         }
+                        val newCatppuccinFlavor = settingsRepository.catppuccinFlavor
+                        if (newCatppuccinFlavor != catppuccinFlavorState.value) {
+                            catppuccinFlavorState.value = newCatppuccinFlavor
+                        }
+                        val newPtyxisPalette = settingsRepository.ptyxisPalette
+                        if (newPtyxisPalette != ptyxisPaletteState.value) {
+                            ptyxisPaletteState.value = newPtyxisPalette
+                        }
+                        val newMonochromeAccents = settingsRepository.monochromeAccents
+                        if (newMonochromeAccents != monochromeAccentsState.value) {
+                            monochromeAccentsState.value = newMonochromeAccents
+                        }
+                        val newAppFont = settingsRepository.appFont
+                        if (newAppFont != appFontState.value) {
+                            appFontState.value = newAppFont
+                        }
+                        val newFontScale = settingsRepository.fontScale
+                        if (newFontScale != fontScaleState.value) {
+                            fontScaleState.value = newFontScale
+                        }
 
                         // Keep security flags in sync with settings toggles.
                         applyWindowSecurityToggles()
@@ -112,8 +137,13 @@ class MainActivity : FragmentActivity() {
             OfflineLLMTheme(
                 themeMode = themeMode,
                 accentColorKey = accentColorState.value,
+                catppuccinFlavorKey = catppuccinFlavorState.value,
                 catppuccinAccentKey = catppuccinAccentState.value,
                 draculaAccentKey = draculaAccentState.value,
+                ptyxisPaletteKey = ptyxisPaletteState.value,
+                monochromeAccents = monochromeAccentsState.value,
+                appFontKey = appFontState.value,
+                fontScale = fontScaleState.value,
             ) {
                 Surface(
                     modifier = Modifier.fillMaxSize(),

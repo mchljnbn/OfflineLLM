@@ -1,22 +1,25 @@
 <div align="center">
 
-<img src="Screenshots/offlinellm.png" width="800" />
+<img src="Screenshots/offlinellm-banner-cobalt.png" width="800" />
 
 **The first of its kind — a fully offline, private AI chat app for Android**
 
 The only Android LLM app that literally cannot phone home. All LLM inference runs on-device via llama.cpp. No internet. No cloud. No tracking.
 
-[![Kotlin](https://img.shields.io/badge/Kotlin-2.3-111111.svg?logo=kotlin&logoColor=white&color=bfff00)](https://kotlinlang.org)
-[![Android](https://img.shields.io/badge/Android-14%2B-111111.svg?logo=android&logoColor=white&color=bfff00)](https://developer.android.com)
-[![Version](https://img.shields.io/badge/Version-5.0.2-111111.svg?color=bfff00)](https://github.com/jegly/OfflineLLM/releases)
-[![License](https://img.shields.io/badge/License-Apache%202.0-111111.svg?color=bfff00)](LICENSE)
-[![llama.cpp](https://img.shields.io/badge/llama.cpp-GGUF-111111.svg?color=bfff00)](https://github.com/ggerganov/llama.cpp)
-[![Offline](https://img.shields.io/badge/Network-Zero%20Permissions-111111.svg?color=bfff00)]()
-[![Jetpack Compose](https://img.shields.io/badge/Jetpack%20Compose-Material%203-111111.svg?logo=jetpackcompose&logoColor=white&color=bfff00)](https://developer.android.com/jetpack/compose)
-![GitHub all releases](https://img.shields.io/github/downloads/jegly/OfflineLLM/total?color=bfff00)
-[![HuggingFace](https://img.shields.io/badge/🤗%20HuggingFace-Releases-111111.svg?color=bfff00)](https://huggingface.co/jegly)
+**⚡ Now with GPU acceleration** — opt-in Vulkan offload runs the entire model on your phone's GPU, with per-device CPU kernel dispatch when you stay on CPU.
 
-[![Download APK](https://img.shields.io/badge/Download_APK-111111?style=for-the-badge&logo=android&logoColor=white&color=bfff00)](https://github.com/jegly/OfflineLLM/releases/latest)
+[![Kotlin](https://img.shields.io/badge/Kotlin-2.3-111111.svg?logo=kotlin&logoColor=white&labelColor=142838&color=8ff586)](https://kotlinlang.org)
+[![Android](https://img.shields.io/badge/Android-14%2B-111111.svg?logo=android&logoColor=white&labelColor=142838&color=8ff586)](https://developer.android.com)
+[![Version](https://img.shields.io/badge/Version-5.1.0-111111.svg?labelColor=142838&color=8ff586)](https://github.com/jegly/OfflineLLM/releases)
+[![License](https://img.shields.io/badge/License-Apache%202.0-111111.svg?labelColor=142838&color=8ff586)](LICENSE)
+[![llama.cpp](https://img.shields.io/badge/llama.cpp-GGUF-111111.svg?labelColor=142838&color=8ff586)](https://github.com/ggerganov/llama.cpp)
+[![GPU](https://img.shields.io/badge/GPU-Vulkan%20Accelerated-111111.svg?labelColor=142838&color=8ff586)]()
+[![Offline](https://img.shields.io/badge/Network-Zero%20Permissions-111111.svg?labelColor=142838&color=8ff586)]()
+[![Jetpack Compose](https://img.shields.io/badge/Jetpack%20Compose-Material%203-111111.svg?logo=jetpackcompose&logoColor=white&labelColor=142838&color=8ff586)](https://developer.android.com/jetpack/compose)
+![GitHub all releases](https://img.shields.io/github/downloads/jegly/OfflineLLM/total?labelColor=142838&color=8ff586)
+[![HuggingFace](https://img.shields.io/badge/🤗%20HuggingFace-Releases-111111.svg?labelColor=142838&color=8ff586)](https://huggingface.co/jegly)
+
+[![Download APK](https://img.shields.io/badge/Download_APK-111111?style=for-the-badge&logo=android&logoColor=white&labelColor=142838&color=8ff586)](https://github.com/jegly/OfflineLLM/releases/latest)
 
 <a href="https://www.buymeacoffee.com/jegly">
   <img src="https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png"
@@ -35,14 +38,14 @@ If this project helped you, please ⭐️ star it. **Also try [Box](https://gith
 
 <p align="center">
 <img src="Screenshots/01_Welcome.png" width="270" />
-<img src="Screenshots/03_Choose_Assistant.png" width="270" />
-<img src="Screenshots/05_Settings_Appearance_Themes.png" width="270" />
+<img src="Screenshots/03_Chat_Empty.png" width="270" />
+<img src="Screenshots/04_Settings_Appearance_Themes.png" width="270" />
 </p>
 
 <p align="center">
+<img src="Screenshots/05_Settings_Performance_GPU.png" width="270" />
 <img src="Screenshots/06_Settings_Sampling.png" width="270" />
-<img src="Screenshots/07_Settings_Security.png" width="270" />
-<img src="Screenshots/08_About.png" width="270" />
+<img src="Screenshots/09_About.png" width="270" />
 </p>
 
 </details>
@@ -50,7 +53,10 @@ If this project helped you, please ⭐️ star it. **Also try [Box](https://gith
 ## Features
 
 - **100% Offline** — no INTERNET permission in the manifest, cannot phone home
-- **On-Device Inference** — GGUF models via llama.cpp with ARM NEON/SVE/i8mm and llamafile SIMD GEMM kernels
+- **On-Device Inference** — GGUF models via llama.cpp; runtime CPU dispatch picks the best kernel set (dotprod / fp16 / i8mm / SVE) for your exact SoC
+- **GPU Acceleration (Vulkan)** — opt-in toggle in Settings with per-layer offload control and automatic CPU fallback; detects and names your GPU
+- **Fast Multi-Turn Chat** — incremental prompt processing: each turn feeds only the new message into the KV cache instead of re-processing the whole conversation
+- **Performance Controls** — CPU thread count, prompt-phase threading across all cores, memory-mapped loading, RAM lock, experimental quantized KV cache
 - **Streaming Responses** — token-by-token output as the model generates
 - **Import Any Model** — bring your own GGUF at runtime via file picker
 - **Multiple Conversations** — auto-titled, renameable, searchable
@@ -59,18 +65,20 @@ If this project helped you, please ⭐️ star it. **Also try [Box](https://gith
 - **System Prompts** — General, Coder, Creative Writer, Tutor, Translator
 - **Markdown + TTS** — formatted responses, read aloud via system TTS
 - **Thinking Tag Stripping** — hides `<think>` blocks from reasoning models
-- **Theming** — System / Light / Dark / AMOLED + Catppuccin Mocha + Dracula, with per-theme accent pickers
+- **Theming** — 11 Ptyxis terminal palettes (Cobalt Neon default) + Catppuccin (all 4 flavors × 14 accents) + Dracula (7 accents) + System / Light / Dark / AMOLED with Material You accents, plus monochrome-accent mode
+- **13 Bundled Fonts** — from Turret Road (default) to IBM Plex, Playfair Display, and Press Start 2P, with an app-wide text-size slider
 - **Context Bar** — live token-usage indicator on the chat screen
 - **Tamper Detection** — release builds verify the APK signing certificate at startup and refuse to run if repackaged
 - **Security** — encrypted settings, optional biometric lock, secure file deletion
 - **Chat Backup** — export/import as JSON
-- **Gemma 4** — automatic prompt template detection
+- **Gemma 4** — native chat-template support, including the elastic E2B/E4B models with shared-KV layers
+- **Actionable Errors** — model-load failures surface the real llama.cpp reason instead of a generic message
 
 ## Install
 
-v5.0.2 ships as a single **Vanilla** APK — bring your own GGUF model and import it from Settings.
+v5.1.0 ships as a single **Vanilla** APK — bring your own GGUF model and import it from Settings.
 
-> **Targets arm64-v8a only** (drops 32-bit ARM and x86 emulator support). Vast majority of Android devices since 2019 are arm64.
+> **Requires Android 14+ and arm64-v8a.** Vast majority of Android devices since 2019 are arm64.
 
 1. Download from [Releases](https://github.com/jegly/OfflineLLM/releases)
 2. **Settings → Apps → Install unknown apps** → allow your file manager
@@ -80,10 +88,17 @@ v5.0.2 ships as a single **Vanilla** APK — bring your own GGUF model and impor
 Or via ADB:
 
 ```bash
-adb install OfflineLLM_V5.0.2_Signed_Release_Vanilla.apk
+adb install OfflineLLM_V5.1.0_Signed_Release_Vanilla.apk
 ```
 
 **Tamper detection:** release builds verify the APK signing certificate at launch. The app exits with an "Unverified App" dialog if anyone has re-signed the APK with a different key.
+
+## Performance
+
+- **CPU**: the APK bundles seven `ggml-cpu` kernel variants (armv8.0 → armv9.2); at load time ggml scores them against your CPU's features and loads the fastest one. Prompt processing additionally uses every core, while generation sticks to the big cores.
+- **GPU**: Settings → Performance → *GPU Acceleration (Vulkan)*. Biggest wins on Adreno-class GPUs and anything with cooperative-matrix support; Mali midrange may tie the CPU. If a GPU load fails, the app automatically retries on CPU.
+- **Long chats**: turn 2 onward only processes your new message — no more re-crunching the whole conversation each turn.
+- All performance settings apply the next time a model is loaded.
 
 ## Recommended Models
 
@@ -99,10 +114,19 @@ Search the model name + "GGUF" on [HuggingFace](https://huggingface.co). `Q4_K_M
 
 ## Build from Source
 
-**Prerequisites:** JDK 17, Android SDK (compileSdk 37), NDK r27, CMake 3.22.1
+**Prerequisites:** JDK 17, Android SDK (compileSdk 37), NDK 27.2, CMake 3.22.1, a host C/C++ compiler (gcc/g++, used to build llama.cpp's Vulkan shader generator)
+
+The Vulkan backend needs two Khronos header repos checked out **next to** the project directory:
 
 ```bash
 git clone --recurse-submodules https://github.com/jegly/OfflineLLM.git
+
+# Khronos headers for the Vulkan GPU backend (siblings of the project dir)
+git clone https://github.com/KhronosGroup/Vulkan-Headers.git
+git clone https://github.com/KhronosGroup/SPIRV-Headers.git
+cmake -S SPIRV-Headers -B SPIRV-Headers/build -DCMAKE_INSTALL_PREFIX=SPIRV-Headers/install
+cmake --install SPIRV-Headers/build
+
 cd OfflineLLM
 
 # Optional: bundle a model in the APK
@@ -111,7 +135,7 @@ cp /path/to/model.gguf app/src/main/assets/model/
 ./gradlew assembleDebug
 ```
 
-First build compiles llama.cpp from source (~15–20 min). Subsequent builds are fast.
+First build compiles llama.cpp from source, including ~1,400 Vulkan compute shaders and seven CPU-variant libraries (~20–30 min). Subsequent builds are fast.
 
 <details>
 <summary><b>Project structure</b></summary>

@@ -11,11 +11,91 @@
 #define LOGi(...) __android_log_print(ANDROID_LOG_INFO, TAG, __VA_ARGS__)
 #define LOGe(...) __android_log_print(ANDROID_LOG_ERROR, TAG, __VA_ARGS__)
 
+std::string LLMInference::_lastErrorLog;
+
+// Local replacements for the llama.cpp `common` helpers — the common library is
+// no longer linked (it drags in upstream's HTTP/download code, unwanted in a
+// zero-network app, and stopped exporting these symbols anyway).
+static std::vector<llama_token>
+tokenizeText(const llama_vocab *vocab, const std::string &text, bool addSpecial, bool parseSpecial) {
+    int n = -llama_tokenize(vocab, text.c_str(), (int32_t) text.size(), nullptr, 0, addSpecial,
+                            parseSpecial);
+    std::vector<llama_token> tokens(n > 0 ? n : 0);
+    if (n > 0) {
+        llama_tokenize(vocab, text.c_str(), (int32_t) text.size(), tokens.data(), n, addSpecial,
+                       parseSpecial);
+    }
+    return tokens;
+}
+
+static std::string
+tokenToPiece(const llama_context *ctx, llama_token token, bool special) {
+    const llama_vocab *vocab = llama_model_get_vocab(llama_get_model(ctx));
+    char buf[256];
+    int n = llama_token_to_piece(vocab, token, buf, sizeof(buf), 0, special);
+    if (n < 0) {
+        n = 0;
+    }
+    return std::string(buf, n);
+}
+
+static void
+batchClear(llama_batch &batch) {
+    batch.n_tokens = 0;
+}
+
+static void
+batchAdd(llama_batch &batch, llama_token id, llama_pos pos,
+         const std::vector<llama_seq_id> &seqIds, bool logits) {
+    batch.token[batch.n_tokens] = id;
+    batch.pos[batch.n_tokens] = pos;
+    batch.n_seq_id[batch.n_tokens] = (int32_t) seqIds.size();
+    for (size_t i = 0; i < seqIds.size(); ++i) {
+        batch.seq_id[batch.n_tokens][i] = seqIds[i];
+    }
+    batch.logits[batch.n_tokens] = logits;
+    batch.n_tokens++;
+}
+
+void
+LLMInference::_logCallback(ggml_log_level level, const char *text, void *userData) {
+    (void) userData;
+    if (!text) return;
+
+    android_LogPriority priority;
+    switch (level) {
+        case GGML_LOG_LEVEL_ERROR: priority = ANDROID_LOG_ERROR; break;
+        case GGML_LOG_LEVEL_WARN:  priority = ANDROID_LOG_WARN;  break;
+        case GGML_LOG_LEVEL_INFO:  priority = ANDROID_LOG_INFO;  break;
+        default:                   priority = ANDROID_LOG_DEBUG; break;
+    }
+    __android_log_print(priority, "[ggml]", "%s", text);
+
+    if (level == GGML_LOG_LEVEL_ERROR || level == GGML_LOG_LEVEL_WARN) {
+        std::string line(text);
+        while (!line.empty() && (line.back() == '\n' || line.back() == '\r')) {
+            line.pop_back();
+        }
+        // Keep the first few lines: llama's load errors cascade from specific
+        // ("missing tensor X") to generic ("failed to load model"), and the
+        // earliest line is the informative one.
+        if (!line.empty() && _lastErrorLog.size() < 512) {
+            if (!_lastErrorLog.empty()) {
+                _lastErrorLog += " | ";
+            }
+            _lastErrorLog += line;
+        }
+    }
+}
+
 void
 LLMInference::loadModel(const char *model_path, float minP, float temperature, float topP, int topK,
                         float repeatPenalty, bool storeChats, long contextSize,
                         const char *chatTemplate, int nThreads, bool useMmap, bool useMlock,
-                        int nGpuLayers) {
+                        int nGpuLayers, int nThreadsBatch, bool kvCacheQ8) {
+    _lastErrorLog.clear();
+    llama_log_set(_logCallback, nullptr);
+
     LOGi("loading model with"
          "\n\tmodel_path = %s"
          "\n\tminP = %f"
@@ -26,13 +106,13 @@ LLMInference::loadModel(const char *model_path, float minP, float temperature, f
          "\n\tstoreChats = %d"
          "\n\tcontextSize = %li"
          "\n\tnThreads = %d"
+         "\n\tnThreadsBatch = %d"
          "\n\tuseMmap = %d"
          "\n\tuseMlock = %d"
-         "\n\tnGpuLayers = %d",
+         "\n\tnGpuLayers = %d"
+         "\n\tkvCacheQ8 = %d",
          model_path, minP, temperature, topP, topK, repeatPenalty, storeChats, contextSize,
-         nThreads, useMmap, useMlock, nGpuLayers);
-
-    ggml_backend_load_all();
+         nThreads, nThreadsBatch, useMmap, useMlock, nGpuLayers, kvCacheQ8);
 
     llama_model_params model_params = llama_model_default_params();
     model_params.use_mmap = useMmap;
@@ -41,18 +121,30 @@ LLMInference::loadModel(const char *model_path, float minP, float temperature, f
     _model = llama_model_load_from_file(model_path, model_params);
     if (!_model) {
         LOGe("failed to load model from %s", model_path);
-        throw std::runtime_error("loadModel() failed");
+        std::string reason = _lastErrorLog.empty() ? "no further detail from ggml" : _lastErrorLog;
+        throw std::runtime_error("loadModel() failed: " + reason);
     }
 
     llama_context_params ctx_params = llama_context_default_params();
     ctx_params.n_ctx = contextSize;
     ctx_params.n_batch = contextSize;
     ctx_params.n_threads = nThreads;
+    // Prompt processing is compute-bound and scales well across all cores
+    // (including efficiency cores); generation is memory-bound and prefers
+    // the smaller big-core count in nThreads.
+    ctx_params.n_threads_batch = (nThreadsBatch > 0) ? nThreadsBatch : nThreads;
+    if (kvCacheQ8) {
+        // Halves KV-cache memory at long contexts. Requires flash attention,
+        // which llama.cpp enables automatically where supported.
+        ctx_params.type_k = GGML_TYPE_Q8_0;
+        ctx_params.type_v = GGML_TYPE_Q8_0;
+    }
     ctx_params.no_perf = true;
     _ctx = llama_init_from_model(_model, ctx_params);
     if (!_ctx) {
         LOGe("llama_new_context_with_model() returned null");
-        throw std::runtime_error("llama_new_context_with_model() returned null");
+        std::string reason = _lastErrorLog.empty() ? "no further detail from ggml" : _lastErrorLog;
+        throw std::runtime_error("llama_new_context_with_model() returned null: " + reason);
     }
 
     llama_sampler_chain_params sampler_params = llama_sampler_chain_default_params();
@@ -80,6 +172,7 @@ LLMInference::loadModel(const char *model_path, float minP, float temperature, f
 
     _formattedMessages = std::vector<char>(llama_n_ctx(_ctx));
     _messages.clear();
+    _prevLen = 0;
 
     if (chatTemplate == nullptr || strlen(chatTemplate) == 0) {
         _chatTemplate = llama_model_chat_template(_model, nullptr);
@@ -99,6 +192,25 @@ LLMInference::loadModel(const char *model_path, float minP, float temperature, f
     }
 
     this->_storeChats = storeChats;
+
+    // Warmup: one throwaway decode so backend buffer allocation happens now
+    // rather than adding latency to the user's first message.
+    const llama_vocab *vocab = llama_model_get_vocab(_model);
+    llama_token bosToken = llama_vocab_bos(vocab);
+    if (bosToken != LLAMA_TOKEN_NULL) {
+        llama_batch warmup = llama_batch_get_one(&bosToken, 1);
+        if (llama_decode(_ctx, warmup) != 0) {
+            LOGe("warmup decode failed (non-fatal)");
+        }
+        llama_memory_clear(llama_get_memory(_ctx), true);
+    }
+}
+
+void
+LLMInference::_updatePrevLen() {
+    int len = llama_chat_apply_template(_chatTemplate, _messages.data(), _messages.size(), false,
+                                        nullptr, 0);
+    _prevLen = len < 0 ? 0 : (size_t) len;
 }
 
 void
@@ -126,15 +238,17 @@ LLMInference::startCompletion(const char *query) {
     if (!_storeChats) {
         _formattedMessages.clear();
         _formattedMessages = std::vector<char>(llama_n_ctx(_ctx));
+        _prevLen = 0;
+        llama_memory_clear(llama_get_memory(_ctx), true);
     }
     _responseGenerationTime = 0;
     _responseNumTokens = 0;
     _response.clear();
     _cacheResponseTokens.clear();
-    
+
     std::string queryString(query);
     if (queryString.find("<turn|") != std::string::npos || queryString.find("<start_of_turn>") != std::string::npos) {
-         _promptTokens = common_tokenize(llama_model_get_vocab(_model), queryString, true, true);
+         _promptTokens = tokenizeText(llama_model_get_vocab(_model), queryString, true, true);
     } else {
         addChatMessage(query, "user");
 
@@ -157,7 +271,7 @@ LLMInference::startCompletion(const char *query) {
                 _formattedMessages.size()
             );
         }
-        
+
         if (new_len < 0) {
             LOGe("llama_chat_apply_template() failed, using fallback formatting");
             std::stringstream fallback;
@@ -166,16 +280,24 @@ LLMInference::startCompletion(const char *query) {
             }
             fallback << _assistantRole << ":";
             std::string prompt = fallback.str();
-            _promptTokens = common_tokenize(llama_model_get_vocab(_model), prompt, true, true);
+            _promptTokens = tokenizeText(llama_model_get_vocab(_model), prompt, true, true);
         } else {
-            std::string prompt(_formattedMessages.begin(), _formattedMessages.begin() + new_len);
-            _promptTokens = common_tokenize(llama_model_get_vocab(_model), prompt, true, true);
+            // Incremental prompt: everything before _prevLen is already in the
+            // KV cache from earlier turns — only feed the new suffix (this turn's
+            // user message + template glue). BOS only on the very first chunk.
+            if (_prevLen > (size_t) new_len) {
+                _prevLen = 0;
+                llama_memory_clear(llama_get_memory(_ctx), true);
+            }
+            std::string prompt(_formattedMessages.begin() + _prevLen,
+                               _formattedMessages.begin() + new_len);
+            _promptTokens = tokenizeText(llama_model_get_vocab(_model), prompt,
+                                            /*add_special=*/_prevLen == 0, /*parse_special=*/true);
         }
     }
 
-    _batch = new llama_batch();
-    _batch->token = _promptTokens.data();
-    _batch->n_tokens = _promptTokens.size();
+    _batch.token = _promptTokens.data();
+    _batch.n_tokens = _promptTokens.size();
 }
 
 bool
@@ -212,12 +334,12 @@ std::string
 LLMInference::completionLoop() {
     uint32_t contextSize = llama_n_ctx(_ctx);
     _nCtxUsed = llama_memory_seq_pos_max(llama_get_memory(_ctx), 0) + 1;
-    if (_nCtxUsed + _batch->n_tokens > contextSize) {
+    if (_nCtxUsed + _batch.n_tokens > (int) contextSize) {
         throw std::runtime_error("context size reached");
     }
 
     auto start = ggml_time_us();
-    if (llama_decode(_ctx, *_batch) < 0) {
+    if (llama_decode(_ctx, _batch) < 0) {
         throw std::runtime_error("llama_decode() failed");
     }
 
@@ -226,11 +348,13 @@ LLMInference::completionLoop() {
     // Check if token is EOG or if the text so far contains stop markers
     bool is_eog = llama_vocab_is_eog(llama_model_get_vocab(_model), _currToken);
     
-    std::string piece = common_token_to_piece(_ctx, _currToken, true);
+    std::string piece = tokenToPiece(_ctx, _currToken, true);
     
-    // Check for stop sequences in the cumulative response
+    // Turn-boundary safety net for models whose EOG token detection misses.
+    // Plain-text stops like "###" were removed: they truncated legitimate
+    // responses containing markdown headings.
     static const std::vector<std::string> stop_sequences = {
-        "<turn|", "<|turn_end|>", "<turn_end|>", "<start_of_turn>", "<end_of_turn>", "###", "System instruction:"
+        "<turn|", "<|turn_end|>", "<turn_end|>", "<start_of_turn>", "<end_of_turn>"
     };
 
     std::string current_full = _response + _cacheResponseTokens + piece;
@@ -243,6 +367,9 @@ LLMInference::completionLoop() {
 
     if (is_eog) {
         addChatMessage(strdup(_response.data()), "assistant");
+        if (_storeChats) {
+            _updatePrevLen();
+        }
         _response.clear();
         return "[EOG]";
     }
@@ -252,8 +379,8 @@ LLMInference::completionLoop() {
     _responseNumTokens += 1;
     _cacheResponseTokens += piece;
 
-    _batch->token = &_currToken;
-    _batch->n_tokens = 1;
+    _batch.token = &_currToken;
+    _batch.n_tokens = 1;
 
     if (_isValidUtf8(_cacheResponseTokens.c_str())) {
         _response += _cacheResponseTokens;
@@ -269,6 +396,7 @@ void
 LLMInference::stopCompletion() {
     if (_storeChats && !_response.empty()) {
         addChatMessage(_response.c_str(), "assistant");
+        _updatePrevLen();
     }
     _response.clear();
     _cacheResponseTokens.clear();
@@ -281,7 +409,6 @@ LLMInference::~LLMInference() {
     }
     if (_ctx) llama_free(_ctx);
     if (_model) llama_model_free(_model);
-    delete _batch;
     if (_sampler) llama_sampler_free(_sampler);
 }
 
@@ -296,10 +423,10 @@ LLMInference::benchModel(int pp, int tg, int pl, int nr) {
     int i, j;
     int nri;
     for (nri = 0; nri < nr; nri++) {
-        common_batch_clear(g_batch);
+        batchClear(g_batch);
         const int n_tokens = pp;
         for (i = 0; i < n_tokens; i++) {
-            common_batch_add(g_batch, 1, i, { 0 }, false);
+            batchAdd(g_batch, 1, i, { 0 }, false);
         }
         g_batch.logits[g_batch.n_tokens - 1] = true;
         llama_memory_clear(llama_get_memory(this->_ctx), false);
@@ -313,9 +440,9 @@ LLMInference::benchModel(int pp, int tg, int pl, int nr) {
         llama_memory_clear(llama_get_memory(this->_ctx), false);
         const auto t_tg_start = ggml_time_us();
         for (i = 0; i < tg; i++) {
-            common_batch_clear(g_batch);
+            batchClear(g_batch);
             for (j = 0; j < pl; j++) {
-                common_batch_add(g_batch, 0, i, { j }, true);
+                batchAdd(g_batch, 0, i, { j }, true);
             }
             if (llama_decode(this->_ctx, g_batch) != 0) {
                 LOGe("llama_decode() failed during text generation");

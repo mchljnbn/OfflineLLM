@@ -41,7 +41,7 @@ data class SettingsUiState(
     val secureStorageBackend: String = "Unknown",
     val systemPromptKey: String = "default",
     val customSystemPrompt: String = "",
-    val themeMode: String = "SYSTEM",
+    val themeMode: String = "PTYXIS",
     val accentColor: String = "dynamic",
     val disableThinking: Boolean = true,
     val mathLatexHints: Boolean = false,
@@ -49,7 +49,18 @@ data class SettingsUiState(
     val translatorTo: String = "es",
     val catppuccinAccent: String = "mauve",
     val draculaAccent: String = "purple",
-    val gpuLayers: Int = 0,
+    val catppuccinFlavor: String = "mocha",
+    val ptyxisPalette: String = "cobalt_neon",
+    val monochromeAccents: Boolean = false,
+    val appFont: String = "turret_road",
+    val fontScale: Float = 1.0f,
+    val gpuLayers: Int = 99,
+    val useGpu: Boolean = false,
+    val useMmap: Boolean = true,
+    val useMlock: Boolean = false,
+    val kvCacheQ8: Boolean = false,
+    val numThreads: Int = 4,
+    val gpuDeviceName: String = "",
     val isImportingModel: Boolean = false,
 )
 
@@ -75,6 +86,11 @@ class SettingsViewModel @Inject constructor(
                     )
                 }
             }
+        }
+        // Off the main thread: first call may initialise the Vulkan instance.
+        viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+            val gpuName = modelManager.getGpuDeviceInfo()
+            _uiState.update { it.copy(gpuDeviceName = gpuName) }
         }
     }
 
@@ -103,7 +119,17 @@ class SettingsViewModel @Inject constructor(
             translatorTo = settingsRepository.translatorTo,
             catppuccinAccent = settingsRepository.catppuccinAccent,
             draculaAccent = settingsRepository.draculaAccent,
+            catppuccinFlavor = settingsRepository.catppuccinFlavor,
+            ptyxisPalette = settingsRepository.ptyxisPalette,
+            monochromeAccents = settingsRepository.monochromeAccents,
+            appFont = settingsRepository.appFont,
+            fontScale = settingsRepository.fontScale,
             gpuLayers = settingsRepository.gpuLayers,
+            useGpu = settingsRepository.useGpu,
+            useMmap = settingsRepository.useMmap,
+            useMlock = settingsRepository.useMlock,
+            kvCacheQ8 = settingsRepository.kvCacheQ8,
+            numThreads = settingsRepository.numThreads,
         )
     }
 
@@ -217,9 +243,59 @@ class SettingsViewModel @Inject constructor(
         _uiState.update { it.copy(draculaAccent = key) }
     }
 
+    fun setCatppuccinFlavor(key: String) {
+        settingsRepository.catppuccinFlavor = key
+        _uiState.update { it.copy(catppuccinFlavor = key) }
+    }
+
+    fun setPtyxisPalette(key: String) {
+        settingsRepository.ptyxisPalette = key
+        _uiState.update { it.copy(ptyxisPalette = key) }
+    }
+
+    fun setMonochromeAccents(enabled: Boolean) {
+        settingsRepository.monochromeAccents = enabled
+        _uiState.update { it.copy(monochromeAccents = enabled) }
+    }
+
+    fun setAppFont(key: String) {
+        settingsRepository.appFont = key
+        _uiState.update { it.copy(appFont = key) }
+    }
+
+    fun setFontScale(value: Float) {
+        settingsRepository.fontScale = value
+        _uiState.update { it.copy(fontScale = value) }
+    }
+
     fun setGpuLayers(value: Int) {
         settingsRepository.gpuLayers = value
         _uiState.update { it.copy(gpuLayers = value) }
+    }
+
+    fun setUseGpu(enabled: Boolean) {
+        settingsRepository.useGpu = enabled
+        _uiState.update { it.copy(useGpu = enabled) }
+    }
+
+    fun setUseMmap(enabled: Boolean) {
+        settingsRepository.useMmap = enabled
+        _uiState.update { it.copy(useMmap = enabled) }
+    }
+
+    fun setUseMlock(enabled: Boolean) {
+        settingsRepository.useMlock = enabled
+        _uiState.update { it.copy(useMlock = enabled) }
+    }
+
+    fun setKvCacheQ8(enabled: Boolean) {
+        settingsRepository.kvCacheQ8 = enabled
+        _uiState.update { it.copy(kvCacheQ8 = enabled) }
+    }
+
+    fun setNumThreads(value: Int) {
+        settingsRepository.numThreads = value
+        _uiState.update { it.copy(numThreads = value) }
     }
 
     fun selectModel(modelId: Long) {
