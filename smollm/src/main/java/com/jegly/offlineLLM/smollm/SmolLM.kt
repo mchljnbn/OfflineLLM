@@ -4,6 +4,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.withContext
+import java.io.File
 
 class SmolLM {
     companion object {
@@ -49,7 +50,20 @@ class SmolLM {
         withContext(Dispatchers.IO) {
             val ggufReader = GGUFReader()
             ggufReader.load(modelPath)
-            val modelContextSize = ggufReader.getContextSize() ?: DefaultParams.CONTEXT_SIZE
+            // Clamp the GGUF's declared context to something a phone can actually
+            // hold. Modern models advertise enormous training contexts — Qwen3.5-2B
+            // declares 262144 — and honouring that verbatim allocates a KV cache and
+            // compute buffers far past what the device has. The bigger the weights,
+            // the less headroom is left for the cache, so the cap tightens with file
+            // size. An explicit user setting (params.contextSize) still wins.
+            val fileSizeBytes = File(modelPath).length()
+            val maxContextBySize = when {
+                fileSizeBytes > 2L * 1024 * 1024 * 1024 -> 4096L // >2 GB
+                fileSizeBytes > 1L * 1024 * 1024 * 1024 -> 8192L // 1–2 GB
+                else -> 8192L
+            }
+            val rawContextSize = ggufReader.getContextSize() ?: DefaultParams.CONTEXT_SIZE
+            val modelContextSize = minOf(rawContextSize, maxContextBySize)
             val modelChatTemplate = ggufReader.getChatTemplate() ?: DefaultParams.CHAT_TEMPLATE
             nativePtr = loadModel(
                 modelPath,
@@ -84,6 +98,19 @@ class SmolLM {
      */
     fun getGpuDeviceInfo(): String = try {
         getGpuDeviceName()
+    } catch (_: Throwable) {
+        ""
+    }
+
+    /**
+     * Registered ggml backends with their active feature flags, plus the backend
+     * devices. The CPU line names the variant actually selected for this device —
+     * a phone reporting `DOTPROD MATMUL_INT8` is running the fast quantized-matmul
+     * kernels, one reporting only `NEON` fell back to the armv8.0 baseline and will
+     * be several times slower. Requires [loadBackends] to have run.
+     */
+    fun getBackendInfo(): String = try {
+        getBackendReport()
     } catch (_: Throwable) {
         ""
     }
@@ -180,6 +207,7 @@ class SmolLM {
     private external fun initBackends(nativeLibDir: String)
 
     private external fun getGpuDeviceName(): String
+    private external fun getBackendReport(): String
     private external fun addChatMessage(modelPtr: Long, message: String, role: String)
     private external fun getResponseGenerationSpeed(modelPtr: Long): Float
     private external fun getContextSizeUsed(modelPtr: Long): Int

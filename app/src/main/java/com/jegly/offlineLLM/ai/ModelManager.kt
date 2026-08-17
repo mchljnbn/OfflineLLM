@@ -211,6 +211,16 @@ class ModelManager(
         return inferenceEngine.getGpuDeviceInfo()
     }
 
+    /**
+     * Registered ggml backends and the CPU feature variant picked for this device.
+     * Intended for the settings/about screen so slow-inference reports can name the
+     * variant that was actually selected.
+     */
+    fun getBackendInfo(): String {
+        ensureBackendsLoaded()
+        return inferenceEngine.getBackendInfo()
+    }
+
     suspend fun unloadModel() {
         inferenceEngine.unloadModel()
         _modelState.value = ModelState.NotLoaded

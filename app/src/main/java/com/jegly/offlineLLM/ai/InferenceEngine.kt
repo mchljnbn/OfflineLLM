@@ -44,6 +44,9 @@ class InferenceEngine {
     /** GPU device description from the ggml backend registry, or "" if none. */
     fun getGpuDeviceInfo(): String = instance.getGpuDeviceInfo()
 
+    /** Registered backends and the CPU feature variant selected for this device. */
+    fun getBackendInfo(): String = instance.getBackendInfo()
+
     fun loadModel(
         modelPath: String,
         params: SmolLM.InferenceParams = SmolLM.InferenceParams(),

@@ -2,15 +2,15 @@
 
 <img src="Screenshots/offlinellm-banner-cobalt.png" width="600" />
 
-**The first of its kind — a fully offline, private AI chat app for Android**
+**The first of its kind — a fully Offline, Private AI chat app for Android**
 
-The only Android LLM app that literally cannot phone home. All LLM inference runs on-device via llama.cpp. No internet. No cloud. No tracking.
+The only Android LLM app that has 0 Network connectivity. All LLM inference runs on-device via llama.cpp. 
 
 **⚡ Now with GPU acceleration** — opt-in Vulkan offload runs the entire model on your phone's GPU, with per-device CPU kernel dispatch when you stay on CPU.
 
 [![Kotlin](https://img.shields.io/badge/Kotlin-2.3-111111.svg?logo=kotlin&logoColor=white&labelColor=142838&color=8ff586)](https://kotlinlang.org)
-[![Android](https://img.shields.io/badge/Android-14%2B-111111.svg?logo=android&logoColor=white&labelColor=142838&color=8ff586)](https://developer.android.com)
-[![Version](https://img.shields.io/badge/Version-5.1.0-111111.svg?labelColor=142838&color=8ff586)](https://github.com/jegly/OfflineLLM/releases)
+[![Android](https://img.shields.io/badge/Android-13%2B-111111.svg?logo=android&logoColor=white&labelColor=142838&color=8ff586)](https://developer.android.com)
+[![Version](https://img.shields.io/badge/Version-5.1.1-111111.svg?labelColor=142838&color=8ff586)](https://github.com/jegly/OfflineLLM/releases)
 [![License](https://img.shields.io/badge/License-Apache%202.0-111111.svg?labelColor=142838&color=8ff586)](LICENSE)
 [![llama.cpp](https://img.shields.io/badge/llama.cpp-GGUF-111111.svg?labelColor=142838&color=8ff586)](https://github.com/ggerganov/llama.cpp)
 [![GPU](https://img.shields.io/badge/GPU-Vulkan%20Accelerated-111111.svg?labelColor=142838&color=8ff586)]()
@@ -31,7 +31,7 @@ The only Android LLM app that literally cannot phone home. All LLM inference run
 
 </div>
 
-If this project helped you, please ⭐️ star it. **Also try [Box](https://github.com/jegly/Box)** — a full-stack on-device AI app built on the same philosophy.
+If this project helped you, please ⭐️ star it. **Also try [Box](https://github.com/jegly/Box)** — The most advanced local AI suite on Android today! 
 
 <details>
 <summary><b>📱 Screenshots</b></summary>
@@ -73,12 +73,13 @@ If this project helped you, please ⭐️ star it. **Also try [Box](https://gith
 - **Chat Backup** — export/import as JSON
 - **Gemma 4** — native chat-template support, including the elastic E2B/E4B models with shared-KV layers
 - **Actionable Errors** — model-load failures surface the real llama.cpp reason instead of a generic message
+- **Backend Diagnostics** — Settings → Performance shows which ggml backend and CPU kernel variant your device actually selected, with its feature flags (DOTPROD / MATMUL_INT8 / SVE / SME); selectable text, so it can be pasted straight into a bug report
 
 ## Install
 
-v5.1.0 ships as a single **Vanilla** APK — bring your own GGUF model and import it from Settings.
+v5.1.1 ships as a single **Vanilla** APK — bring your own GGUF model and import it from Settings.
 
-> **Requires Android 14+ and arm64-v8a.** Vast majority of Android devices since 2019 are arm64.
+> **Requires Android 13+ and arm64-v8a.** Vast majority of Android devices since 2019 are arm64.
 
 1. Download from [Releases](https://github.com/jegly/OfflineLLM/releases)
 2. **Settings → Apps → Install unknown apps** → allow your file manager
@@ -88,7 +89,7 @@ v5.1.0 ships as a single **Vanilla** APK — bring your own GGUF model and impor
 Or via ADB:
 
 ```bash
-adb install OfflineLLM_V5.1.0_Signed_Release_Vanilla.apk
+adb install OfflineLLM_V5.1.1_Signed_Release_Vanilla.apk
 ```
 
 **Tamper detection:** release builds verify the APK signing certificate at launch. The app exits with an "Unverified App" dialog if anyone has re-signed the APK with a different key.
@@ -96,8 +97,10 @@ adb install OfflineLLM_V5.1.0_Signed_Release_Vanilla.apk
 ## Performance
 
 - **CPU**: the APK bundles seven `ggml-cpu` kernel variants (armv8.0 → armv9.2); at load time ggml scores them against your CPU's features and loads the fastest one. Prompt processing additionally uses every core, while generation sticks to the big cores.
-- **GPU**: Settings → Performance → *GPU Acceleration (Vulkan)*. Biggest wins on Adreno-class GPUs and anything with cooperative-matrix support; Mali midrange may tie the CPU. If a GPU load fails, the app automatically retries on CPU.
+- **GPU**: Settings → Performance → *GPU Acceleration (Vulkan)*. Biggest wins on Adreno-class GPUs and anything with cooperative-matrix support; Mali midrange may tie the CPU. If a GPU load fails, the app automatically retries on CPU. Note that on many mobile GPUs — Mali especially — token generation is memory-bandwidth-bound and the CPU kernels can be *faster*; if the GPU toggle feels slower, it probably is, so turn it back off.
 - **Long chats**: turn 2 onward only processes your new message — no more re-crunching the whole conversation each turn.
+- **Threading**: ggml's own thread pool is used rather than OpenMP, which is what makes the CPU-thread settings actually take effect and keeps generation off the efficiency cores (upstream's Android build does the same).
+- **Check what you actually got**: Settings → Performance → *Active backend* lists the selected backend and its feature flags. `DOTPROD` plus `MATMUL_INT8` means the fast quantized-matmul kernels are running; a device showing only `NEON` fell back to the armv8.0 baseline and will be several times slower.
 - All performance settings apply the next time a model is loaded.
 
 ## Recommended Models
@@ -108,26 +111,26 @@ adb install OfflineLLM_V5.1.0_Signed_Release_Vanilla.apk
 | **Qwen3.5 0.8B Q4_K_M** | ~530 MB | Good balance for 4–6 GB RAM |
 | **gemma-4-E2B-it-GGUF** (2.3B effective) | ~1.3 GB | **Recommended for 6–8 GB RAM** |
 | **gemma-4-E4B-it-GGUF** (4.5B effective) | ~2.5 GB | **Recommended for 8 GB RAM** |
-| **Qwen3.5 4B Q4_K_M** | ~2.5 GB | Flagship (12 GB+ RAM) |
+| **Qwen3.5/6 2-4B Q4_K_M** | ~2.5 GB | Flagship (12 GB+ RAM) |
 
 Search the model name + "GGUF" on [HuggingFace](https://huggingface.co). `Q4_K_M` is the best quality/speed balance.
 
 ## Build from Source
 
-**Prerequisites:** JDK 17, Android SDK (compileSdk 37), NDK 27.2, CMake 3.22.1, a host C/C++ compiler (gcc/g++, used to build llama.cpp's Vulkan shader generator)
+**Prerequisites:** JDK 17, Android SDK (compileSdk 37), NDK 27.2, CMake 3.22.1 or newer (the build picks the newest one installed in the SDK), a host C/C++ compiler (gcc/g++, used to build llama.cpp's Vulkan shader generator)
 
-The Vulkan backend needs two Khronos header repos checked out **next to** the project directory:
+The Vulkan backend needs two Khronos header repos checked out **inside** the project root. They're gitignored rather than vendored, so clone them after the project:
 
 ```bash
 git clone --recurse-submodules https://github.com/jegly/OfflineLLM.git
+cd OfflineLLM
 
-# Khronos headers for the Vulkan GPU backend (siblings of the project dir)
-git clone https://github.com/KhronosGroup/Vulkan-Headers.git
+# Khronos headers for the Vulkan GPU backend (inside the project root).
+# Vulkan-Headers is pinned to the tag ggml-vulkan is known to build against.
+git clone --branch v1.4.351 --depth 1 https://github.com/KhronosGroup/Vulkan-Headers.git
 git clone https://github.com/KhronosGroup/SPIRV-Headers.git
 cmake -S SPIRV-Headers -B SPIRV-Headers/build -DCMAKE_INSTALL_PREFIX=SPIRV-Headers/install
 cmake --install SPIRV-Headers/build
-
-cd OfflineLLM
 
 # Optional: bundle a model in the APK
 cp /path/to/model.gguf app/src/main/assets/model/

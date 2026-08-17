@@ -19,6 +19,7 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -43,7 +44,7 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.MenuAnchorType
+import androidx.compose.material3.ExposedDropdownMenuAnchorType
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Scaffold
@@ -67,7 +68,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
-import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.jegly.offlineLLM.ai.SystemPrompts
 import com.jegly.offlineLLM.ui.theme.AppFont
@@ -431,6 +432,30 @@ fun SettingsScreen(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
 
+            // Which ggml backend plugin actually won the runtime scoring on this
+            // device. Seven CPU variants ship in the APK and only one is chosen;
+            // without this there is no way to tell a phone running the fast
+            // dotprod/i8mm kernels from one that fell back to the armv8.0
+            // baseline, which is several times slower on quantized models.
+            // Selectable so it can be pasted into a bug report.
+            if (uiState.backendInfo.isNotEmpty()) {
+                Spacer(modifier = Modifier.height(4.dp))
+                Text("Active backend", style = MaterialTheme.typography.bodyMedium)
+                SelectionContainer {
+                    Text(
+                        uiState.backendInfo.trim(),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                Text(
+                    "Include this when reporting slow performance. DOTPROD and MATMUL_INT8 " +
+                        "mean the fast quantized-matmul kernels are in use.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+
             HorizontalDivider()
 
             // === SAMPLING PARAMETERS ===
@@ -557,7 +582,7 @@ fun SettingsScreen(
                     onValueChange = {},
                     readOnly = true,
                     trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = promptExpanded) },
-                    modifier = Modifier.fillMaxWidth().menuAnchor(MenuAnchorType.PrimaryNotEditable),
+                    modifier = Modifier.fillMaxWidth().menuAnchor(ExposedDropdownMenuAnchorType.PrimaryNotEditable),
                 )
                 ExposedDropdownMenu(expanded = promptExpanded, onDismissRequest = { promptExpanded = false }) {
                     SystemPrompts.options.forEach { option ->
@@ -588,7 +613,7 @@ fun SettingsScreen(
                             readOnly = true,
                             label = { Text("From") },
                             trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = fromExpanded) },
-                            modifier = Modifier.fillMaxWidth().menuAnchor(MenuAnchorType.PrimaryNotEditable),
+                            modifier = Modifier.fillMaxWidth().menuAnchor(ExposedDropdownMenuAnchorType.PrimaryNotEditable),
                         )
                         ExposedDropdownMenu(expanded = fromExpanded, onDismissRequest = { fromExpanded = false }) {
                             SystemPrompts.languages.forEach { lang ->
@@ -610,7 +635,7 @@ fun SettingsScreen(
                             readOnly = true,
                             label = { Text("To") },
                             trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = toExpanded) },
-                            modifier = Modifier.fillMaxWidth().menuAnchor(MenuAnchorType.PrimaryNotEditable),
+                            modifier = Modifier.fillMaxWidth().menuAnchor(ExposedDropdownMenuAnchorType.PrimaryNotEditable),
                         )
                         ExposedDropdownMenu(expanded = toExpanded, onDismissRequest = { toExpanded = false }) {
                             SystemPrompts.languages.forEach { lang ->

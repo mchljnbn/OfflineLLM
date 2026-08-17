@@ -58,6 +58,10 @@ class ChatViewModel @Inject constructor(
     private val _uiState = MutableStateFlow(ChatUiState())
     val uiState: StateFlow<ChatUiState> = _uiState
 
+    // Building a Json instance is expensive enough that kotlinx warns about doing
+    // it per call; chat export reuses this one.
+    private val exportJson = Json { prettyPrint = true }
+
     private val memoryMonitor = MemoryMonitor(application)
     private val ttsHelper = TtsHelper(application)
     private var navigationJob: kotlinx.coroutines.Job? = null
@@ -373,7 +377,7 @@ class ChatViewModel @Inject constructor(
             )
         }
         val data = ExportData(chats = exportedChats)
-        return Json { prettyPrint = true }.encodeToString(data)
+        return exportJson.encodeToString(data)
     }
 
     fun speakMessage(messageId: String, text: String) {

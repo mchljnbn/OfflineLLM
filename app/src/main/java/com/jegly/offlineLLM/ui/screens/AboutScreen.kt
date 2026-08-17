@@ -1,5 +1,7 @@
 package com.jegly.offlineLLM.ui.screens
 
+import com.jegly.offlineLLM.BuildConfig
+
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
@@ -61,7 +63,9 @@ fun AboutScreen(
                 fontWeight = FontWeight.Bold,
             )
             Text(
-                text = "Version 5.1.0",
+                // Read from BuildConfig rather than a literal — this was still
+                // showing 5.1.0 after the build had moved on.
+                text = "Version ${BuildConfig.VERSION_NAME}",
                 style = MaterialTheme.typography.bodyLarge,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )

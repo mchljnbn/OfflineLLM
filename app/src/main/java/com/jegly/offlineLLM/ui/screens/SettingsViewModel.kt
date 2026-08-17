@@ -61,6 +61,7 @@ data class SettingsUiState(
     val kvCacheQ8: Boolean = false,
     val numThreads: Int = 4,
     val gpuDeviceName: String = "",
+    val backendInfo: String = "",
     val isImportingModel: Boolean = false,
 )
 
@@ -90,7 +91,9 @@ class SettingsViewModel @Inject constructor(
         // Off the main thread: first call may initialise the Vulkan instance.
         viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
             val gpuName = modelManager.getGpuDeviceInfo()
-            _uiState.update { it.copy(gpuDeviceName = gpuName) }
+            // Same backend registry, already loaded by the call above.
+            val backends = modelManager.getBackendInfo()
+            _uiState.update { it.copy(gpuDeviceName = gpuName, backendInfo = backends) }
         }
     }
 

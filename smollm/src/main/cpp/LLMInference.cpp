@@ -115,9 +115,38 @@ LLMInference::loadModel(const char *model_path, float minP, float temperature, f
          nThreads, nThreadsBatch, useMmap, useMlock, nGpuLayers, kvCacheQ8);
 
     llama_model_params model_params = llama_model_default_params();
-    model_params.use_mmap = useMmap;
-    model_params.use_mlock = useMlock;
+    // Upstream replaced the use_mmap/use_mlock booleans with a single load_mode
+    // enum; the two flags map onto its combinations one-for-one.
+    if (useMmap) {
+        model_params.load_mode = useMlock ? LLAMA_LOAD_MODE_MMAP_MLOCK : LLAMA_LOAD_MODE_MMAP;
+    } else {
+        model_params.load_mode = useMlock ? LLAMA_LOAD_MODE_MLOCK : LLAMA_LOAD_MODE_NONE;
+    }
     model_params.n_gpu_layers = nGpuLayers;
+    // CPU mode must actually mean CPU: with a GPU backend registered (Vulkan is
+    // always loaded by initBackends), llama.cpp still adds it to the scheduler at
+    // n_gpu_layers=0 and routes large-batch prompt processing through it, copying
+    // weights to the GPU per batch. On desktop dGPUs that's a win; on mobile the
+    // copies are so slow that "CPU" chats crawl, and a large Vulkan compute buffer
+    // gets reserved for a chat that never touches the GPU. It also pushes
+    // Vulkan_Host ahead of the CPU repack buffer type, so quantized weights are
+    // never repacked into the layouts ARM's dotprod/i8mm GEMM kernels need.
+    // Restricting the device list keeps CPU chats pure CPU end to end; GPU mode
+    // (nGpuLayers > 0) is unaffected. The vector only needs to outlive the load
+    // call — llama copies the device list into the model.
+    std::vector<ggml_backend_dev_t> cpuOnlyDevices;
+    if (nGpuLayers <= 0) {
+        for (size_t i = 0; i < ggml_backend_dev_count(); i++) {
+            ggml_backend_dev_t dev = ggml_backend_dev_get(i);
+            enum ggml_backend_dev_type devType = ggml_backend_dev_type(dev);
+            if (devType == GGML_BACKEND_DEVICE_TYPE_CPU ||
+                devType == GGML_BACKEND_DEVICE_TYPE_ACCEL) {
+                cpuOnlyDevices.push_back(dev);
+            }
+        }
+        cpuOnlyDevices.push_back(nullptr);
+        model_params.devices = cpuOnlyDevices.data();
+    }
     _model = llama_model_load_from_file(model_path, model_params);
     if (!_model) {
         LOGe("failed to load model from %s", model_path);
@@ -133,6 +162,15 @@ LLMInference::loadModel(const char *model_path, float minP, float temperature, f
     // (including efficiency cores); generation is memory-bound and prefers
     // the smaller big-core count in nThreads.
     ctx_params.n_threads_batch = (nThreadsBatch > 0) ? nThreadsBatch : nThreads;
+    // Cap the logits buffer at a single position. n_outputs_max defaults to
+    // n_batch, and n_batch is set to the context size above, so the graph
+    // reserves logits for a whole ubatch: n_ubatch(512) * n_vocab * 4 bytes.
+    // On a 248k-vocab model that is ~485 MiB of compute buffer to hold outputs
+    // that are never read — this wrapper samples one token at a time and only
+    // ever asks for the last position's logits (llama_sampler_sample(..., -1)).
+    // Large-vocab models made this scale into serious memory pressure on phones.
+    // Raise this if multi-token output is ever needed in one decode.
+    ctx_params.n_outputs_max = 1;
     if (kvCacheQ8) {
         // Halves KV-cache memory at long contexts. Requires flash attention,
         // which llama.cpp enables automatically where supported.
@@ -152,7 +190,10 @@ LLMInference::loadModel(const char *model_path, float minP, float temperature, f
     _sampler = llama_sampler_chain_init(sampler_params);
 
     if (repeatPenalty > 1.0f) {
-        llama_sampler_chain_add(_sampler, llama_sampler_init_penalties(256, repeatPenalty, 0.0f, 0.0f));
+        // n_vocab is a new leading argument on this sampler upstream.
+        const int32_t nVocab = llama_vocab_n_tokens(llama_model_get_vocab(_model));
+        llama_sampler_chain_add(_sampler,
+                                llama_sampler_init_penalties(nVocab, 256, repeatPenalty, 0.0f, 0.0f));
     }
 
     if (topK > 0) {
@@ -298,6 +339,11 @@ LLMInference::startCompletion(const char *query) {
 
     _batch.token = _promptTokens.data();
     _batch.n_tokens = _promptTokens.size();
+
+    // Generation had no logging at all, so a stall was indistinguishable from
+    // slowness in a logcat capture. Keep it to one line per turn.
+    LOGi("startCompletion: %zu prompt tokens, ctxUsed=%d",
+         _promptTokens.size(), llama_memory_seq_pos_max(llama_get_memory(_ctx), 0) + 1);
 }
 
 bool

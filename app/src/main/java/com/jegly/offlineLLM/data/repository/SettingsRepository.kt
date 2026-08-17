@@ -11,7 +11,7 @@ import javax.inject.Singleton
 
 @Singleton
 class SettingsRepository @Inject constructor(
-    @ApplicationContext private val context: Context
+    @param:ApplicationContext private val context: Context
 ) {
     // Prefer a StrongBox-backed master key when available. Fall back gracefully when not.
     private val masterKeyAndBackend: Pair<MasterKey, String> by lazy { createMasterKeyAndBackend() }
@@ -244,8 +244,12 @@ class SettingsRepository @Inject constructor(
         get() = prefs.getBoolean(KEY_USE_GPU, false)
         set(value) = prefs.edit().putBoolean(KEY_USE_GPU, value).apply()
 
+    // Defaults off: mapping the weights leaves them as file-backed pages the kernel
+    // can evict under pressure, so the first reply stalls re-faulting them back in.
+    // Reading the model into anonymous memory once is measurably quicker to first
+    // token on phones. Users who are tight on RAM can turn it back on.
     var useMmap: Boolean
-        get() = prefs.getBoolean(KEY_USE_MMAP, true)
+        get() = prefs.getBoolean(KEY_USE_MMAP, false)
         set(value) = prefs.edit().putBoolean(KEY_USE_MMAP, value).apply()
 
     var useMlock: Boolean

@@ -12,10 +12,10 @@ android {
 
     defaultConfig {
         applicationId = "com.jegly.offlineLLM"
-        minSdk = 34
+        minSdk = 33
         targetSdk = 37
-        versionCode = 8
-        versionName = "5.1.0"
+        versionCode = 9
+        versionName = "5.1.1"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         ndk {
             abiFilters += "arm64-v8a"
@@ -86,7 +86,7 @@ dependencies {
     // Hilt
     implementation(libs.hilt.android)
     ksp(libs.hilt.compiler)
-    implementation(libs.hilt.navigation.compose)
+    implementation(libs.hilt.lifecycle.viewmodel.compose)
 
     // Room
     implementation(libs.room.runtime)

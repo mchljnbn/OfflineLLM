@@ -1,6 +1,16 @@
 cmake_minimum_required(VERSION 3.22.1)
 project("smollm")
 
+# ggml-vulkan.cpp includes <spirv/unified1/spirv.hpp> from KhronosGroup/SPIRV-Headers,
+# which the NDK sysroot doesn't carry. The include dir arrives as a cache var rather
+# than through cppFlags: cppFlags lands in CMAKE_CXX_FLAGS, which is whitespace-split
+# (so it breaks on any checkout path containing a space) and is applied globally to
+# every C++ target rather than just the one that needs it.
+# Declared before add_subdirectory so it propagates to the ggml-vulkan target.
+if(DEFINED SPIRV_HEADERS_INCLUDE_DIR AND EXISTS "${SPIRV_HEADERS_INCLUDE_DIR}")
+    include_directories(SYSTEM "${SPIRV_HEADERS_INCLUDE_DIR}")
+endif()
+
 # llama.cpp must be cloned at the project root as a submodule
 # git submodule add https://github.com/ggerganov/llama.cpp.git
 add_subdirectory(../../../../llama.cpp llama.cpp)

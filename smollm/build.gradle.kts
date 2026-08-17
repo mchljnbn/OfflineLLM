@@ -12,6 +12,28 @@ val sdkDir: String = rootProject.file("local.properties")
     ?: System.getenv("ANDROID_SDK_ROOT")
     ?: ""
 
+// Toolchain versions are named once here — the NDK version and the CMake version
+// are each referenced from several places below (ndkVersion, the glslc path, the
+// ninja path, the AGP cmake block), and those drifting apart silently produces a
+// path to a directory that no longer exists.
+val ndkVersionPinned = "27.2.12479018"
+
+// Newest CMake present in the SDK, so installing a newer one from the SDK Manager
+// is picked up without editing this file. llama.cpp declares
+// cmake_minimum_required(3.14...3.28), so any SDK CMake satisfies it. Falls back
+// to the version AGP bundles when the SDK dir can't be read.
+val cmakeVersionPinned: String =
+    file("$sdkDir/cmake")
+        .takeIf { it.isDirectory }
+        ?.listFiles()
+        ?.filter { it.isDirectory && File(it, "bin/ninja").exists() }
+        ?.maxByOrNull { dir ->
+            val p = dir.name.split('.').map { it.toIntOrNull() ?: 0 }
+            p.getOrElse(0) { 0 } * 1_000_000L + p.getOrElse(1) { 0 } * 1_000L + p.getOrElse(2) { 0 }
+        }
+        ?.name
+        ?: "3.22.1"
+
 // Host toolchain for llama.cpp's vulkan-shaders-gen, which must run on the build
 // machine (not Android). Mirrors upstream's host-toolchain.cmake.in but also pins
 // CMAKE_MAKE_PROGRAM to the SDK's ninja when present, since the host may have no
@@ -19,7 +41,7 @@ val sdkDir: String = rootProject.file("local.properties")
 val vulkanHostToolchain: File =
     layout.buildDirectory.file("vulkan-host-toolchain.cmake").get().asFile.apply {
         parentFile.mkdirs()
-        val sdkNinja = file("$sdkDir/cmake/3.22.1/bin/ninja")
+        val sdkNinja = file("$sdkDir/cmake/$cmakeVersionPinned/bin/ninja")
         val makeProgramLine =
             if (sdkDir.isNotEmpty() && sdkNinja.exists())
                 "\nset(CMAKE_MAKE_PROGRAM \"${sdkNinja.absolutePath}\" CACHE FILEPATH \"\")"
@@ -41,14 +63,10 @@ val vulkanHostToolchain: File =
 android {
     namespace = "com.jegly.offlineLLM.smollm"
     compileSdk = 37
-    ndkVersion = "27.2.12479018"
-    namespace = "com.jegly.offlineLLM.smollm"
-    compileSdk = 37
-    ndkVersion = "27.2.12479018"
+    ndkVersion = ndkVersionPinned
 
-    defaultConfig
     defaultConfig {
-        minSdk = 34
+        minSdk = 33
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         consumerProguardFiles("consumer-rules.pro")
         ndk {
@@ -57,59 +75,63 @@ android {
         externalNativeBuild {
             cmake {
                 cppFlags += listOf("-O3")
-                // ggml-vulkan includes <spirv/unified1/spirv.hpp> assuming the Vulkan SDK
-                // layout where spirv headers sit beside the vulkan ones; with our split
-                // Khronos checkouts the SPIRV include dir must be added explicitly.
-                run {
-                    val spirvInclude = rootProject.file("../SPIRV-Headers/include")
-                    if (spirvInclude.exists()) {
-                        cppFlags += "-isystem${spirvInclude.absolutePath}"
-                    }
-                }
+                // The SPIRV include dir is passed as a cache var further down
+                // (-DSPIRV_HEADERS_INCLUDE_DIR) and consumed in our CMakeLists, rather
+                // than pushed through cppFlags — cppFlags becomes CMAKE_CXX_FLAGS, which
+                // is whitespace-split and applies to every C++ target in the build.
                 arguments += listOf("-DANDROID_SUPPORT_FLEXIBLE_PAGE_SIZES=ON")
                 arguments += "-DCMAKE_BUILD_TYPE=Release"
                 arguments += "-DBUILD_SHARED_LIBS=ON"
                 // common drags in HTTP/download code and is no longer needed —
                 // the JNI wrapper uses the llama.h C API directly.
                 arguments += "-DLLAMA_BUILD_COMMON=OFF"
-                arguments += "-DLLAMA_CURL=OFF"
                 // Vulkan GPU backend (opt-in at runtime via Settings; devices without
                 // Vulkan 1.2 fail registration gracefully and stay CPU-only).
                 arguments += "-DGGML_VULKAN=ON"
-                // Backends as runtime-loadable plugins, with one ggml-cpu variant per
-                // ARM feature level (dotprod/fp16/i8mm/SVE...). ggml scores the variants
-                // against the device CPU at load time and picks the best — this is what
-                // actually enables the fast quantized-matmul kernels on modern SoCs.
+                // Backends stay runtime-loadable so the Vulkan plugin can register (or
+                // fail) independently of the CPU one.
                 arguments += "-DGGML_BACKEND_DL=ON"
+                // One ggml-cpu plugin per ARM feature level, scored against the device
+                // at load time — this is what puts dotprod/fp16/i8mm/SVE kernels on the
+                // SoCs that have them, while still running on armv8.0. Mutually exclusive
+                // with a fixed GGML_CPU_ARM_ARCH pin, which would trade the whole ladder
+                // for one hard-coded floor.
                 arguments += "-DGGML_CPU_ALL_VARIANTS=ON"
                 if (sdkDir.isNotEmpty()) {
-                    // Only pin ninja when this exact cmake version exists — hosts like
+                    // Only pin ninja when the SDK actually ships one — hosts like
                     // F-Droid's buildserver ship a different one and AGP falls back fine.
-                    val ninja = file("$sdkDir/cmake/3.22.1/bin/ninja")
+                    val ninja = file("$sdkDir/cmake/$cmakeVersionPinned/bin/ninja")
                     if (ninja.exists()) {
                         arguments += "-DCMAKE_MAKE_PROGRAM=${ninja.absolutePath}"
                     }
                     // glslc ships with the NDK; FindVulkan won't discover it in the
                     // cross-compile sysroot on its own.
-                    arguments += "-DVulkan_GLSLC_EXECUTABLE=$sdkDir/ndk/27.2.12479018/shader-tools/linux-x86_64/glslc"
+                    arguments += "-DVulkan_GLSLC_EXECUTABLE=$sdkDir/ndk/$ndkVersionPinned/shader-tools/linux-x86_64/glslc"
                     arguments += "-DGGML_VULKAN_SHADERS_GEN_TOOLCHAIN=${vulkanHostToolchain.absolutePath}"
                     // The NDK sysroot has only the Vulkan C headers; ggml-vulkan.cpp
                     // needs Vulkan-Hpp (vulkan.hpp). Point FindVulkan at a checkout of
                     // KhronosGroup/Vulkan-Headers, whose include dir carries a
                     // self-consistent set of both C and C++ headers.
-                    val vulkanHeaders = rootProject.file("../Vulkan-Headers/include")
+                    val vulkanHeaders = rootProject.file("Vulkan-Headers/include")
                     if (vulkanHeaders.exists()) {
                         arguments += "-DVulkan_INCLUDE_DIR=${vulkanHeaders.absolutePath}"
                     } else {
                         logger.warn(
                             "Vulkan-Headers not found at ${vulkanHeaders.absolutePath} — " +
                             "ggml-vulkan will fail to compile. Clone " +
-                            "https://github.com/KhronosGroup/Vulkan-Headers.git next to the project."
+                            "https://github.com/KhronosGroup/Vulkan-Headers.git into the project root."
                         )
                     }
+                    // Raw include dir for the direct <spirv/unified1/spirv.hpp> include,
+                    // consumed by include_directories(SYSTEM ...) in our CMakeLists.
+                    val spirvInclude = rootProject.file("SPIRV-Headers/include")
+                    if (spirvInclude.exists()) {
+                        arguments += "-DSPIRV_HEADERS_INCLUDE_DIR=${spirvInclude.absolutePath}"
+                    }
                     // SPIRV-Headers CMake package (header-only; installed locally from a
-                    // clone of KhronosGroup/SPIRV-Headers via `cmake --install`).
-                    val spirvHeaders = rootProject.file("../SPIRV-Headers/install")
+                    // clone of KhronosGroup/SPIRV-Headers via `cmake --install`) — this is
+                    // what ggml-vulkan's find_package(SPIRV-Headers CONFIG REQUIRED) needs.
+                    val spirvHeaders = rootProject.file("SPIRV-Headers/install")
                     if (spirvHeaders.exists()) {
                         arguments += "-DSPIRV-Headers_DIR=${spirvHeaders.absolutePath}/share/cmake/SPIRV-Headers"
                     } else {
@@ -136,7 +158,7 @@ android {
     externalNativeBuild {
         cmake {
             path = file("src/main/cpp/CMakeLists.txt")
-            version = "3.22.1"
+            version = cmakeVersionPinned
         }
     }
 }
