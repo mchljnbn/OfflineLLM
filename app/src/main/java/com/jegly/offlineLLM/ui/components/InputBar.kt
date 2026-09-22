@@ -35,63 +35,76 @@ fun InputBar(
     enabled: Boolean,
     modifier: Modifier = Modifier,
 ) {
-    Row(
+    GlassSurface(
+        shape = RoundedCornerShape(28.dp),
+        tint = MaterialTheme.colorScheme.surface,
+        tintAlpha = 0.5f,
         modifier = modifier
             .fillMaxWidth()
             .padding(horizontal = 12.dp, vertical = 8.dp),
-        verticalAlignment = Alignment.Bottom
     ) {
-        OutlinedTextField(
-            value = value,
-            onValueChange = onValueChange,
-            modifier = Modifier
-                .weight(1f)
-                .padding(end = 8.dp),
-            placeholder = { Text("Type a message\u2026") },
-            enabled = enabled,
-            shape = RoundedCornerShape(24.dp),
-            colors = OutlinedTextFieldDefaults.colors(
-                focusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
-                unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),
-            ),
-            keyboardOptions = KeyboardOptions(
-                capitalization = KeyboardCapitalization.Sentences,
-                imeAction = ImeAction.Send
-            ),
-            keyboardActions = KeyboardActions(
-                onSend = { if (!isGenerating && value.isNotBlank()) onSend() }
-            ),
-            maxLines = 6,
-        )
+        Row(
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
+            verticalAlignment = Alignment.Bottom
+        ) {
+            OutlinedTextField(
+                value = value,
+                onValueChange = onValueChange,
+                modifier = Modifier
+                    .weight(1f)
+                    .padding(end = 8.dp),
+                placeholder = { Text("Type a message\u2026") },
+                enabled = enabled,
+                shape = RoundedCornerShape(24.dp),
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedContainerColor = androidx.compose.ui.graphics.Color.Transparent,
+                    unfocusedContainerColor = androidx.compose.ui.graphics.Color.Transparent,
+                    focusedBorderColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.6f),
+                    unfocusedBorderColor = MaterialTheme.colorScheme.outline.copy(alpha = 0.3f),
+                ),
+                keyboardOptions = KeyboardOptions(
+                    capitalization = KeyboardCapitalization.Sentences,
+                    imeAction = ImeAction.Send
+                ),
+                keyboardActions = KeyboardActions(
+                    onSend = { if (!isGenerating && value.isNotBlank()) onSend() }
+                ),
+                maxLines = 6,
+            )
 
-        AnimatedContent(
-            targetState = isGenerating,
-            label = "send_stop_button"
-        ) { generating ->
-            if (generating) {
-                FilledIconButton(
-                    onClick = onStop,
-                    modifier = Modifier.size(48.dp),
-                    colors = IconButtonDefaults.filledIconButtonColors(
-                        containerColor = MaterialTheme.colorScheme.error
-                    )
-                ) {
-                    Icon(
-                        imageVector = Icons.Filled.Stop,
-                        contentDescription = "Stop generation",
-                        tint = MaterialTheme.colorScheme.onError
-                    )
-                }
-            } else {
-                FilledIconButton(
-                    onClick = onSend,
-                    modifier = Modifier.size(48.dp),
-                    enabled = value.isNotBlank() && enabled,
-                ) {
-                    Icon(
-                        imageVector = Icons.AutoMirrored.Filled.Send,
-                        contentDescription = "Send message"
-                    )
+            AnimatedContent(
+                targetState = isGenerating,
+                label = "send_stop_button"
+            ) { generating ->
+                if (generating) {
+                    FilledIconButton(
+                        onClick = onStop,
+                        modifier = Modifier.size(48.dp),
+                        colors = IconButtonDefaults.filledIconButtonColors(
+                            containerColor = MaterialTheme.colorScheme.error
+                        )
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.Stop,
+                            contentDescription = "Stop generation",
+                            tint = MaterialTheme.colorScheme.onError
+                        )
+                    }
+                } else {
+                    FilledIconButton(
+                        onClick = onSend,
+                        modifier = Modifier.size(48.dp),
+                        enabled = value.isNotBlank() && enabled,
+                        colors = IconButtonDefaults.filledIconButtonColors(
+                            containerColor = MaterialTheme.colorScheme.primary
+                        )
+                    ) {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.Send,
+                            contentDescription = "Send message",
+                            tint = MaterialTheme.colorScheme.onPrimary,
+                        )
+                    }
                 }
             }
         }
