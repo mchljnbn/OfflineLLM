@@ -2,6 +2,7 @@ package com.jegly.offlineLLM.ui.components
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
@@ -16,12 +17,13 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 
 /**
- * A frosted-glass style surface: soft translucent fill, subtle blur on its own
- * background layer, and a thin light border to catch the "edge highlight" look
- * you get in iOS/visionOS style glassmorphism.
+ * A frosted-glass style surface: soft translucent fill and a thin light border
+ * to catch the "edge highlight" look you get in iOS/visionOS style
+ * glassmorphism cards.
  *
  * Works on minSdk 33 (this project's floor) since RenderEffect-backed blur has
- * been available since API 31 — no extra Android-version handling needed.
+ * been available since API 31 — no extra Android-version handling needed, and
+ * it runs fine on Android 14 (34), 15 (35) and 16 (36).
  */
 @Composable
 fun GlassSurface(
@@ -30,7 +32,7 @@ fun GlassSurface(
     tint: Color = MaterialTheme.colorScheme.surface,
     tintAlpha: Float = 0.55f,
     borderAlpha: Float = 0.35f,
-    blurRadius: Dp = 18.dp,
+    blurRadius: Dp = 3.dp,
     content: @Composable () -> Unit,
 ) {
     Box(
@@ -39,14 +41,12 @@ fun GlassSurface(
             .background(
                 Brush.linearGradient(
                     colors = listOf(
-                        tint.copy(alpha = tintAlpha + 0.1f),
-                        tint.copy(alpha = tintAlpha - 0.15f).coerceAlpha(),
+                        (tintAlpha + 0.1f).coerceIn(0f, 1f).let { tint.copy(alpha = it) },
+                        (tintAlpha - 0.15f).coerceIn(0f, 1f).let { tint.copy(alpha = it) },
                     )
                 )
             )
-            .blur(radius = blurRadius / 6) // gentle self-blur to soften the fill; the real
-            // "see-through blur" of whatever sits behind this surface is provided by
-            // GlassBackground below, which blurs the backdrop content itself.
+            .blur(radius = blurRadius) // gentle self-blur to soften the fill edges
             .border(
                 width = 1.dp,
                 color = Color.White.copy(alpha = borderAlpha),
@@ -59,8 +59,8 @@ fun GlassSurface(
 
 /**
  * Wrap a screen's content in this to get the soft gradient backdrop that glass
- * cards need in order to actually read as "glass" (a flat single-color
- * background makes GlassSurface look like nothing at all).
+ * cards need in order to actually read as "glass" — a flat single-color
+ * background makes GlassSurface look like nothing at all.
  */
 @Composable
 fun GlassBackground(
@@ -84,5 +84,3 @@ fun GlassBackground(
         content()
     }
 }
-
-private fun Float.coerceAlpha(): Float = coerceIn(0f, 1f)
